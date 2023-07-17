@@ -2,18 +2,13 @@
 #include <esp_log.h>
 #include <math.h>
 #include <hal/misc.h>
-#include <hal/uart_types.h>
-#include <soc/uart_periph.h>
-#include <soc/dport_reg.h>
-#include <soc/uart_struct.h>
 
 #include <stdlib.h>
 
 #include "Arduino.h"
 #include "Dynamixel2Arduino.h"
 #include "utility/port_handler.h"
-#include <driver/gpio.h>
-#include <driver/uart.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
@@ -32,6 +27,14 @@
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
 
+#include "QuteeDxlPortHandler.hpp"
+#include <Wire.h>
+#include "SparkFun_ISM330DHCX.h"
+
+SparkFun_ISM330DHCX myISM; 
+// Structs for X,Y,Z data
+sfe_ism_data_t accelData; 
+sfe_ism_data_t gyroData; 
 
 
 
@@ -48,7 +51,7 @@ int amplitude = 0;
 
 static const char *TAGWIFI = "wifi softAP";
 
-static const char* TAG = "ESP2Dynamixel";
+
 //bool did_collision_happen_since_last_check() {
 //    bool ret = UART1.int_raw.rs485_clash_int_raw;
 //    UART1.int_clr.rs485_clash_int_clr = 1;  // clear bit
@@ -106,94 +109,6 @@ void wifi_init_softap(void)
 }
 
 
-
-class NewSerialPortHandler : public DXLPortHandler
-{
-  public:
-    NewSerialPortHandler(uart_port_t uart_num)
-    :uart_num_(uart_num)
-    {}
-
-    virtual void begin()
-    {
-        begin(115200);
-    }
-
-    virtual void begin(int baud )
-    {
-        baud_ = baud;
-        ESP_LOGI(TAG,"START CUSTOM PORT HANDLER");
-        uart_config_t uart_config = {
-            .baud_rate = baud,
-            .data_bits = UART_DATA_8_BITS,
-            .parity    = UART_PARITY_DISABLE,
-            .stop_bits = UART_STOP_BITS_1,
-            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        };
-        ESP_ERROR_CHECK(uart_param_config(uart_num_, &uart_config));
-        ESP_ERROR_CHECK(uart_set_pin(uart_num_, GPIO_NUM_17, GPIO_NUM_18, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-        // Setup UART buffered IO with event queue
-        const int uart_buffer_size = (1024 * 2);
-        // Install UART driver using an event queue here
-        ESP_ERROR_CHECK(uart_driver_install(uart_num_, uart_buffer_size, \
-                                        uart_buffer_size, 0, NULL, 0));
-
-        uart_set_mode(UART_NUM_1, UART_MODE_RS485_APP_CTRL);
-        UART1.rs485_conf.rs485rxby_tx_en = 0;  // don't send while receiving => collision avoidance
-        UART1.rs485_conf.rs485tx_rx_en = 1;  // loopback (1), so collision detection works
-
-        setOpenState(true);
-        ESP_LOGI(TAG,"START CUSTOM PORT HANDLER: DONE");
-    }
-
-    virtual void end()
-    {
-        ESP_ERROR_CHECK(uart_driver_delete(uart_num_));
-        setOpenState(false);
-    }
-    virtual int available()
-    {
-       size_t len;
-       ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num_, &len));
-       return len;
-    }
-
-    virtual int read()
-    {
-       uint8_t val;
-       uart_read_bytes(uart_num_, &val, 1, 100); // I randomly set the last param to 100 ... not sure
-       return val;
-
-    }
-
-
-    virtual size_t write(uint8_t c) override
-    {
-      size_t ret = 0;
-      
-      //ret = port_.write(c);
-      ret = uart_write_bytes(uart_num_, &c, 1);
-      ESP_ERROR_CHECK(uart_flush(uart_num_));
-      
-      return ret;
-    }
-
-    virtual size_t write(uint8_t *buf, size_t len) override
-    {
-      size_t ret;
-
-      //ret = port_.write(buf, len);
-      ret = uart_write_bytes(uart_num_, buf, len);  
-      ESP_ERROR_CHECK(uart_flush(uart_num_));
-
-      return ret;     
-    }
-
-  private:
-    const uart_port_t uart_num_;
-    unsigned long baud_;
-  
-};
 
 
 
@@ -348,13 +263,51 @@ CLEAN_UP:
 //This namespace is required to use Control table item names
 using namespace ControlTableItem;
 
+void init_imu(){
+ Wire.begin();
+    if( !myISM.begin() ){
+		Serial.println("Did not begin.");
+		while(1);
+	}
 
+	// Reset the device to default settings. This if helpful is you're doing multiple
+	// uploads testing different settings. 
+	myISM.deviceReset();
+
+	// Wait for it to finish reseting
+	while( !myISM.getDeviceReset() ){ 
+		delay(1);
+	} 
+    ESP_LOGI("IMU","Reset. Applying settings.");
+	delay(100);
+	
+	myISM.setDeviceConfig();
+	myISM.setBlockDataUpdate();
+	
+	// Set the output data rate and precision of the accelerometer
+	myISM.setAccelDataRate(ISM_XL_ODR_104Hz);
+	myISM.setAccelFullScale(ISM_4g); 
+
+	// Set the output data rate and precision of the gyroscope
+	myISM.setGyroDataRate(ISM_GY_ODR_104Hz);
+	myISM.setGyroFullScale(ISM_500dps); 
+
+	// Turn on the accelerometer's filter and apply settings. 
+	myISM.setAccelFilterLP2();
+	myISM.setAccelSlopeFilter(ISM_LP_ODR_DIV_100);
+
+	// Turn on the gyroscope's filter and apply settings. 
+	myISM.setGyroFilterLP1();
+	myISM.setGyroLP1Bandwidth(ISM_MEDIUM);
+    ESP_LOGI("IMU","IMU DONE.");
+
+}
 
 
 
 extern "C" void app_main()
 { 
-  
+   
     //Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -363,7 +316,7 @@ extern "C" void app_main()
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
+    ESP_LOGI(TAGWIFI, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
 
 
@@ -375,7 +328,7 @@ extern "C" void app_main()
 #endif
 
     Dynamixel2Arduino dxl;
-    NewSerialPortHandler dxl_port(UART_NUM_1);
+    QuteeDxlPortHandler dxl_port(UART_NUM_1);
     dxl.setPort(dxl_port);
     int32_t baud = 1000000;
     int8_t  protocol = 2;       
@@ -384,9 +337,9 @@ extern "C" void app_main()
     int8_t found_dynamixel = 0;
 
     dxl.setPortProtocolVersion((float) protocol);
-    ESP_LOGI(TAG,"SCAN PROTOCOL %i", protocol);
+    ESP_LOGI("SCAN: ","PROTOCOL %i", protocol);
 
-    ESP_LOGI(TAG,"SCAN BAUDRATE %i\n", baud);
+    ESP_LOGI("SCAN: ","BAUDRATE %i\n", baud);
     dxl.begin(baud);
     int DXL_IDs[] = {11, 12, 13, 21, 22, 23,  31, 32, 33, 41, 42, 43};
 
@@ -429,5 +382,14 @@ extern "C" void app_main()
         //int cur_pos= dxl.getPresentPosition(DXL_ID);
         //ESP_LOGI(TAG,"Present_Position(raw) :%i  VS Target Pos : %i ", cur_pos, target_pos ); 
         //delay(10);
+
+        if( myISM.checkStatus() ){
+		myISM.getAccel(&accelData);
+		myISM.getGyro(&gyroData);
+        ESP_LOGI("Accelerometer: ","X: %f, Y:%f, Z:%f \n", accelData.xData,accelData.yData,accelData.zData);
+		ESP_LOGI("Gyroscope: ","X: %f, Y:%f, Z:%f \n", gyroData.xData,gyroData.yData,gyroData.zData);
+
+	}
+
     }
 }
