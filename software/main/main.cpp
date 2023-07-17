@@ -4,7 +4,7 @@
 #include <hal/misc.h>
 
 #include <stdlib.h>
-
+#include <eigen3/Eigen/Eigen> // EIGEN Should be loaded before Arduino. Otherwise we have some definition issues. 
 #include "Arduino.h"
 #include "Dynamixel2Arduino.h"
 #include "utility/port_handler.h"
@@ -20,7 +20,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
-
+#include <ctime>
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
@@ -30,6 +30,14 @@
 #include "QuteeDxlPortHandler.hpp"
 #include <Wire.h>
 #include "SparkFun_ISM330DHCX.h"
+
+#include "QuteeController.hpp"
+
+
+
+
+
+ 
 
 SparkFun_ISM330DHCX myISM; 
 // Structs for X,Y,Z data
@@ -116,7 +124,7 @@ static void do_retransmit(const int sock)
 {
     int len;
     char rx_buffer[128];
-
+    ESP_LOGI(TAGWIFI, "START retransmit");
     do {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
         if (len < 0) {
@@ -134,7 +142,7 @@ static void do_retransmit(const int sock)
                   if ( isdigit(*p) || ( (*p=='-'||*p=='+') && isdigit(*(p+1)) )) {
                       // Found a number
                       long val = strtol(p, &p, 10); // Read number
-                      ESP_LOGI(TAGWIFI, "FOUNDN NUMBER %ld", val);
+                      ESP_LOGI(TAGWIFI, "FOUND NUMBER %ld", val);
                       if (val <=512 && val>=0) 
                         amplitude = val;
                       else
@@ -157,7 +165,8 @@ static void do_retransmit(const int sock)
                 to_write -= written;
             }
         }
-    } while (len > 0);
+    } while (len > 0 || (len ==-1 && errno == EWOULDBLOCK));
+    ESP_LOGI(TAGWIFI, "END retransmit");
 }
 
 static void tcp_server_task(void *pvParameters)
@@ -235,6 +244,10 @@ static void tcp_server_task(void *pvParameters)
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepIdle, sizeof(int));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepInterval, sizeof(int));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepCount, sizeof(int));
+
+        // Make the socket non blocking
+        fcntl(sock, O_NONBLOCK, true);
+
         // Convert ip address to string
         if (source_addr.ss_family == PF_INET) {
             inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
@@ -372,24 +385,40 @@ extern "C" void app_main()
 
 
 
-    float time  = 0.0;
-    
+
+    Eigen::VectorXf params;
+    params<< 0, 0, 0, 
+             0, 0, 0, 
+
+             0, 0, 0, 
+             0, 0, 0, 
+
+             0, 0, 0, 
+             0, 0, 0, 
+
+             0, 0, 0, 
+             0, 0, 0; 
+
+              
+    QuteeController ctrl(params);
+    const clock_t begin_time = std::clock();
     while(1){
-        time = time +1.0;
+        float time = float( clock () - begin_time ) /  CLOCKS_PER_SEC;
         int target_pos = 2048+amplitude*sin(time/40.0);
+        Eigen::VectorXf pos = ctrl.pos(time);
         for(size_t i = 0; i<12; i++)
-          dxl.setGoalPosition(DXL_IDs[i], target_pos);
+          dxl.setGoalPosition(DXL_IDs[i], 2048+pos[i]*360.0/4096.0);
         //int cur_pos= dxl.getPresentPosition(DXL_ID);
         //ESP_LOGI(TAG,"Present_Position(raw) :%i  VS Target Pos : %i ", cur_pos, target_pos ); 
         //delay(10);
 
         if( myISM.checkStatus() ){
-		myISM.getAccel(&accelData);
-		myISM.getGyro(&gyroData);
-        ESP_LOGI("Accelerometer: ","X: %f, Y:%f, Z:%f \n", accelData.xData,accelData.yData,accelData.zData);
-		ESP_LOGI("Gyroscope: ","X: %f, Y:%f, Z:%f \n", gyroData.xData,gyroData.yData,gyroData.zData);
+            myISM.getAccel(&accelData);
+            myISM.getGyro(&gyroData);
+            ESP_LOGI("Accelerometer: ","X: %f, Y:%f, Z:%f \n", accelData.xData,accelData.yData,accelData.zData);
+            ESP_LOGI("Gyroscope: ","X: %f, Y:%f, Z:%f \n", gyroData.xData,gyroData.yData,gyroData.zData);
 
-	}
+        }
 
     }
 }

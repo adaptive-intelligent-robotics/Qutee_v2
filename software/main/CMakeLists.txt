@@ -20,6 +20,7 @@ idf_component_register(SRCS "main.cpp"
                                 "../components/SparkFun_MMC5983MA_Magnetometer_Arduino_Library/src"
 
                     REQUIRES "arduino-esp32" # Library requires Arduino
+                             "eigen"
                     )
 set_target_properties(${COMPONENT_LIB} PROPERTIES COMPILE_FLAGS "-Wno-maybe-uninitialized -Wimplicit-function-declaration")
 
