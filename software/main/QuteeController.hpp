@@ -72,19 +72,19 @@ public:
         // leg 0
         angles(0)  =  M_PI_4 * _legs0commands0[t_index];
         angles(1)  =  M_PI_4 * _legs0commands1[t_index];
-        angles(2)  = -M_PI_4 * _legs0commands2[t_index];
+        angles(2)  =  M_PI_4 * _legs0commands2[t_index];
         // leg 1    
         angles(3)  =  M_PI_4 * _legs1commands0[t_index];
         angles(4)  =  M_PI_4 * _legs1commands1[t_index];
-        angles(5)  = -M_PI_4 * _legs1commands2[t_index];
+        angles(5)  =  M_PI_4 * _legs1commands2[t_index];
         // leg 2
         angles(6)  =  M_PI_4 * _legs2commands0[t_index];
         angles(7)  =  M_PI_4 * _legs2commands1[t_index];
-        angles(8)  = -M_PI_4 * _legs2commands2[t_index];
+        angles(8)  =  M_PI_4 * _legs2commands2[t_index];
         // leg 3
         angles(9)  =  M_PI_4 * _legs3commands0[t_index];
         angles(10) =  M_PI_4 * _legs3commands1[t_index];
-        angles(11) = -M_PI_4 * _legs3commands2[t_index];
+        angles(11) =  M_PI_4 * _legs3commands2[t_index];
 
         return angles;
     }
@@ -137,7 +137,7 @@ protected:
         }
 
         // apply phase
-        VectorXf final_command;
+        VectorXf final_command(ARRAY_DIM);
         int current = 0;
         int start = std::floor(ARRAY_DIM * phase);
         for (int i = start; i < ARRAY_DIM; i++) {

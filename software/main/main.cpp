@@ -2,7 +2,7 @@
 #include <esp_log.h>
 #include <math.h>
 #include <hal/misc.h>
-
+#include <thread>
 #include <stdlib.h>
 #include <eigen3/Eigen/Eigen> // EIGEN Should be loaded before Arduino. Otherwise we have some definition issues. 
 #include "Arduino.h"
@@ -30,15 +30,17 @@
 #include "QuteeDxlPortHandler.hpp"
 #include <Wire.h>
 #include "SparkFun_ISM330DHCX.h"
+#include "SparkFun_MMC5983MA_Arduino_Library.h"
 
 #include "QuteeController.hpp"
-
+#include "NNQuteeController.hpp"
 
 
 
 
  
 
+SFE_MMC5983MA myMag;
 SparkFun_ISM330DHCX myISM; 
 // Structs for X,Y,Z data
 sfe_ism_data_t accelData; 
@@ -55,7 +57,7 @@ sfe_ism_data_t gyroData;
 #define EXAMPLE_ESP_WIFI_CHANNEL   CONFIG_ESP_WIFI_CHANNEL
 #define EXAMPLE_MAX_STA_CONN       CONFIG_ESP_MAX_STA_CONN
 
-int amplitude = 0;
+float amplitude = 0;
 
 static const char *TAGWIFI = "wifi softAP";
 
@@ -118,19 +120,52 @@ void wifi_init_softap(void)
 
 
 
-
+NNQuteeController<9,1,8,12> nncontroller;
 
 static void do_retransmit(const int sock)
 {
     int len;
     char rx_buffer[128];
-    ESP_LOGI(TAGWIFI, "START retransmit");
     do {
+        std::this_thread::sleep_for(std::chrono::microseconds(10000));
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        if (len < 0) {
-            ESP_LOGE(TAGWIFI, "Error occurred during receiving: errno %d", errno);
+        if (len < 0)
+        {
+         if(errno != EWOULDBLOCK) ESP_LOGE(TAGWIFI, "Error occurred during receiving: errno %d", errno);
+         else{ // No new message and here to send potential ones. 
+            if( myISM.checkStatus() ){
+                myISM.getAccel(&accelData);
+                myISM.getGyro(&gyroData);
+                Eigen::Matrix< float , 9 , 1> imu_data;
+                imu_data << accelData.xData,
+                            accelData.yData,
+                            accelData.zData,
+                            gyroData.xData, 
+                            gyroData.yData, 
+                            gyroData.zData,
+                            ((double)myMag.getMeasurementX()- 131072.0)/131072.0 *8,
+                            ((double)myMag.getMeasurementY()- 131072.0)/131072.0 *8, 
+                            ((double)myMag.getMeasurementZ()- 131072.0)/131072.0 *8;
+
+                auto pos = nncontroller.pos(imu_data);
+                std::stringstream ss;
+                ss << imu_data.transpose()<< "\n" << pos.transpose()<< "\n\n";
+                std::string imu_dat_str = ss.str();
+                // send() can return less bytes than supplied length.
+                // Walk-around for robust implementation.
+                int to_write = imu_dat_str.size();
+                while (to_write > 0) {
+                    int written = send(sock, imu_dat_str.c_str() + (imu_dat_str.size() - to_write), to_write, 0);
+                    if (written < 0) {
+                        ESP_LOGE(TAGWIFI, "Error occurred during sending: errno %d", errno);
+                    }
+                    to_write -= written;
+                }
+            }
+         }
         } else if (len == 0) {
             ESP_LOGW(TAGWIFI, "Connection closed");
+
         } else {
             rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
             ESP_LOGI(TAGWIFI, "Received %d bytes: %s", len, rx_buffer);
@@ -143,8 +178,8 @@ static void do_retransmit(const int sock)
                       // Found a number
                       long val = strtol(p, &p, 10); // Read number
                       ESP_LOGI(TAGWIFI, "FOUND NUMBER %ld", val);
-                      if (val <=512 && val>=0) 
-                        amplitude = val;
+                      if (val <=100 && val>=0) 
+                        amplitude = val/100.0;
                       else
                         ESP_LOGE(TAGWIFI, "INVALID NUMBER RECEIVED");
                   } else {  
@@ -166,7 +201,6 @@ static void do_retransmit(const int sock)
             }
         }
     } while (len > 0 || (len ==-1 && errno == EWOULDBLOCK));
-    ESP_LOGI(TAGWIFI, "END retransmit");
 }
 
 static void tcp_server_task(void *pvParameters)
@@ -187,15 +221,6 @@ static void tcp_server_task(void *pvParameters)
         dest_addr_ip4->sin_port = htons(PORT);
         ip_protocol = IPPROTO_IP;
     }
-#ifdef CONFIG_EXAMPLE_IPV6
-    else if (addr_family == AF_INET6) {
-        struct sockaddr_in6 *dest_addr_ip6 = (struct sockaddr_in6 *)&dest_addr;
-        bzero(&dest_addr_ip6->sin6_addr.un, sizeof(dest_addr_ip6->sin6_addr.un));
-        dest_addr_ip6->sin6_family = AF_INET6;
-        dest_addr_ip6->sin6_port = htons(PORT);
-        ip_protocol = IPPROTO_IPV6;
-    }
-#endif
 
     int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
     if (listen_sock < 0) {
@@ -205,11 +230,6 @@ static void tcp_server_task(void *pvParameters)
     }
     int opt = 1;
     setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-#if defined(CONFIG_EXAMPLE_IPV4) && defined(CONFIG_EXAMPLE_IPV6)
-    // Note that by default IPV6 binds to both protocols, it is must be disabled
-    // if both protocols used at the same time (used in CI)
-    setsockopt(listen_sock, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
-#endif
 
     ESP_LOGI(TAGWIFI, "Socket created");
 
@@ -246,17 +266,12 @@ static void tcp_server_task(void *pvParameters)
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepCount, sizeof(int));
 
         // Make the socket non blocking
-        fcntl(sock, O_NONBLOCK, true);
+        fcntl(sock, F_SETFL, O_NONBLOCK);
 
         // Convert ip address to string
         if (source_addr.ss_family == PF_INET) {
             inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
         }
-#ifdef CONFIG_EXAMPLE_IPV6
-        else if (source_addr.ss_family == PF_INET6) {
-            inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr, addr_str, sizeof(addr_str) - 1);
-        }
-#endif
         ESP_LOGI(TAGWIFI, "Socket accepted ip address: %s", addr_str);
 
         do_retransmit(sock);
@@ -277,18 +292,29 @@ CLEAN_UP:
 using namespace ControlTableItem;
 
 void init_imu(){
- Wire.begin();
+    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_7, 1);
+    ESP_LOGI("IMU","START IMU PROCESS.");
+    Wire.setPins(GPIO_NUM_3,GPIO_NUM_4);
+    Wire.begin();
+
     if( !myISM.begin() ){
-		Serial.println("Did not begin.");
+		ESP_LOGI("IMU","Did not start.");
 		while(1);
 	}
+    if (!myMag.begin() ){
+        ESP_LOGI("MAG","Did not start.");
+		while(1);
+    }
 
 	// Reset the device to default settings. This if helpful is you're doing multiple
 	// uploads testing different settings. 
 	myISM.deviceReset();
+    myMag.softReset();
 
 	// Wait for it to finish reseting
 	while( !myISM.getDeviceReset() ){ 
+        ESP_LOGI("IMU","Reseting.");
 		delay(1);
 	} 
     ESP_LOGI("IMU","Reset. Applying settings.");
@@ -331,14 +357,11 @@ extern "C" void app_main()
 
     ESP_LOGI(TAGWIFI, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
-
-
-#ifdef CONFIG_EXAMPLE_IPV4
     xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
-#endif
-#ifdef CONFIG_EXAMPLE_IPV6
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET6, 5, NULL);
-#endif
+
+
+
+    init_imu();
 
     Dynamixel2Arduino dxl;
     QuteeDxlPortHandler dxl_port(UART_NUM_1);
@@ -386,8 +409,16 @@ extern "C" void app_main()
 
 
 
-    Eigen::VectorXf params;
-    params<< 0, 0, 0, 
+    Eigen::VectorXf params = Eigen::VectorXf::Zero(24);
+    params(2) = 0.5;
+    params(5) = 0.5;
+    params(8) = 0.5;
+    params(11) = 0.5;
+    params(14) = 0.5;
+    params(17) = 0.5;
+    params(20) = 0.5;
+    params(23) = 0.5;
+   /* params<< 0, 0, 0, 
              0, 0, 0, 
 
              0, 0, 0, 
@@ -397,28 +428,38 @@ extern "C" void app_main()
              0, 0, 0, 
 
              0, 0, 0, 
-             0, 0, 0; 
+             0, 0, 0; */
 
               
     QuteeController ctrl(params);
-    const clock_t begin_time = std::clock();
+
+    const int begin_time = esp_timer_get_time();
     while(1){
-        float time = float( clock () - begin_time ) /  CLOCKS_PER_SEC;
-        int target_pos = 2048+amplitude*sin(time/40.0);
+        std::this_thread::sleep_for(std::chrono::microseconds(1000));   
+        if (ctrl.parameters()[0]!= amplitude)
+        {   
+            params(0) = amplitude;
+            params(3) = amplitude;
+            params(6) = amplitude;
+            params(9) = amplitude;
+            params(12) = amplitude;
+            params(15) = amplitude;
+            params(18) = amplitude;
+            params(21) = amplitude;
+            ctrl.set_parameters(params);
+        }
+         
+        float time = float( esp_timer_get_time() - begin_time )/1000000.0;
         Eigen::VectorXf pos = ctrl.pos(time);
-        for(size_t i = 0; i<12; i++)
-          dxl.setGoalPosition(DXL_IDs[i], 2048+pos[i]*360.0/4096.0);
+        for(size_t i = 0; i<12; i++){
+          dxl.setGoalPosition(DXL_IDs[i], (size_t) 2048+pos[i]*4096.0/(2*3.14));
+          //ESP_LOGI("TEST","ID:%i  VS Target Pos : %f : %f ", DXL_IDs[i], time, (size_t) 2048+pos[i]*4096.0/(2*3.14)); 
+        }
         //int cur_pos= dxl.getPresentPosition(DXL_ID);
         //ESP_LOGI(TAG,"Present_Position(raw) :%i  VS Target Pos : %i ", cur_pos, target_pos ); 
         //delay(10);
 
-        if( myISM.checkStatus() ){
-            myISM.getAccel(&accelData);
-            myISM.getGyro(&gyroData);
-            ESP_LOGI("Accelerometer: ","X: %f, Y:%f, Z:%f \n", accelData.xData,accelData.yData,accelData.zData);
-            ESP_LOGI("Gyroscope: ","X: %f, Y:%f, Z:%f \n", gyroData.xData,gyroData.yData,gyroData.zData);
 
-        }
 
     }
 }
