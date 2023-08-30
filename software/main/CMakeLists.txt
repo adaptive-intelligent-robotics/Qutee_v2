@@ -18,9 +18,11 @@ idf_component_register(SRCS "main.cpp"
                                 "../components/SparkFun_6DoF_ISM330DHCX_Arduino_Library/src/."
                                 "../components/SparkFun_6DoF_ISM330DHCX_Arduino_Library/src/st_src"
                                 "../components/SparkFun_MMC5983MA_Magnetometer_Arduino_Library/src"
+                                "../components/micro_ros_espidf_component/"
 
                     REQUIRES "arduino-esp32" # Library requires Arduino
                              "eigen"
+                             "micro_ros_espidf_component"
                     )
 set_target_properties(${COMPONENT_LIB} PROPERTIES COMPILE_FLAGS "-Wno-maybe-uninitialized -Wimplicit-function-declaration")
 

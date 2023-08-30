@@ -27,9 +27,9 @@ public:
     void set_random_weights()
     {
         //TODO: REPLACE THAT WITH XAVIER INIT.
-        _weights_inputs =  Eigen::Matrix< float , n_neurons , n_inputs + 1>::Zero();
-        _weights_hidden  = Eigen::Matrix< float , n_neurons , n_neurons + 1, n_layers - 1 >::Zero();
-        _weights_ouputs =  Eigen::Matrix< float , n_outputs ,  n_neurons + 1>::Zero();
+        _weights_inputs =  Eigen::Matrix< float , n_neurons , n_inputs + 1>::Random();
+        _weights_hidden  = Eigen::Matrix< float , n_neurons , n_neurons + 1, n_layers - 1 >::Random();
+        _weights_ouputs =  Eigen::Matrix< float , n_outputs ,  n_neurons + 1>::Random();
     }
 
     void set_parameters(const Eigen::Matrix< float , n_neurons , n_inputs + 1>& weights_inputs,

@@ -1,60 +1,27 @@
-menu "Example Configuration"
+menu "QUTEE settings"
 
-    config EXAMPLE_IPV4
-        bool "IPV4"
-        default y
-
-    config EXAMPLE_IPV6
-        bool "IPV6"
-        default n
-        select EXAMPLE_CONNECT_IPV6
-
-    config EXAMPLE_PORT
-        int "Port"
-        range 0 65535
-        default 3333
+    config MICRO_ROS_APP_STACK
+        int "Stack the micro-ROS app (Bytes)"
+        default 16000
         help
-            Local port the example server will listen on.
+        Stack size in Bytes of the micro-ROS app
 
-    config EXAMPLE_KEEPALIVE_IDLE
-        int "TCP keep-alive idle time(s)"
+    config MICRO_ROS_APP_TASK_PRIO
+        int "Priority of the micro-ROS app"
         default 5
         help
-            Keep-alive idle time. In idle time without receiving any data from peer, will send keep-alive probe packet
+        Priority of micro-ros task higher value means higher priority
 
-    config EXAMPLE_KEEPALIVE_INTERVAL
-        int "TCP keep-alive interval time(s)"
+    config ROBOT_CTRL_APP_STACK
+        int "Stack the Robot Controll app (Bytes)"
+        default 16000
+        help
+        Stack size in Bytes of the Robot Controll app
+
+    config ROBOT_CTRL_APP_TASK_PRIO
+        int "Priority of the Robot Controll app"
         default 5
         help
-            Keep-alive probe packet interval time.
-
-    config EXAMPLE_KEEPALIVE_COUNT
-        int "TCP keep-alive packet retry send counts"
-        default 3
-        help
-            Keep-alive probe packet retry count.
-
-    config ESP_WIFI_SSID
-        string "WiFi SSID"
-        default "QUTEE"
-        help
-            SSID (network name) for the example to connect to.
-
-    config ESP_WIFI_PASSWORD
-        string "WiFi Password"
-        default "AIRL2023"
-        help
-            WiFi password (WPA or WPA2) for the example to use.
-    config ESP_WIFI_CHANNEL
-        int "WiFi Channel"
-        range 1 13
-        default 1
-        help
-            WiFi channel (network channel) for the example to use.
-
-    config ESP_MAX_STA_CONN
-        int "Maximal STA connections"
-        default 4
-        help
-            Max number of the STA connects to AP.
+        Priority of  Robot Controll task higher value means higher priority
+        
 endmenu

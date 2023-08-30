@@ -1,10 +1,10 @@
 dependencies:
   espressif/arduino-esp32:
-    component_hash: acea16aa4933415d50701caf4c943f27184c5d011362274142d1de93ed87b70b
+    component_hash: ebbffbe3cd1daec65e85669e3ef1e32022a60517ea3ce21b3272d3230c8665d3
     source:
       service_url: https://api.components.espressif.com/
       type: service
-    version: 2.0.10
+    version: 2.0.11
   espressif/eigen:
     component_hash: 64a82d75ea6b7cb9240398ce0b6616e905d71b83a734b2cf9cb58ad09dd4f5ea
     source:

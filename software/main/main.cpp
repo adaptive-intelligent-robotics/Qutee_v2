@@ -14,18 +14,26 @@
 #include <sys/param.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_wifi.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
-#include "esp_netif.h"
-#include <ctime>
 
-#include "lwip/err.h"
-#include "lwip/sockets.h"
-#include "lwip/sys.h"
-#include <lwip/netdb.h>
+
+#include <uros_network_interfaces.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+//#include <sensor_msgs/msg/imu.h>
+#include <std_msgs/msg/float32_multi_array.h>
+#include <std_msgs/msg/float32.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+
+#ifdef CONFIG_MICRO_ROS_ESP_XRCE_DDS_MIDDLEWARE
+#include <rmw_microros/rmw_microros.h>
+#endif
+
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc);vTaskDelete(NULL);}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);}}
+
+
+
 
 #include "QuteeDxlPortHandler.hpp"
 #include <Wire.h>
@@ -48,80 +56,117 @@ sfe_ism_data_t gyroData;
 
 
 
-#define PORT                       CONFIG_EXAMPLE_PORT
-#define KEEPALIVE_IDLE             CONFIG_EXAMPLE_KEEPALIVE_IDLE
-#define KEEPALIVE_INTERVAL         CONFIG_EXAMPLE_KEEPALIVE_INTERVAL
-#define KEEPALIVE_COUNT            CONFIG_EXAMPLE_KEEPALIVE_COUNT
-#define EXAMPLE_ESP_WIFI_SSID      CONFIG_ESP_WIFI_SSID
-#define EXAMPLE_ESP_WIFI_PASS      CONFIG_ESP_WIFI_PASSWORD
-#define EXAMPLE_ESP_WIFI_CHANNEL   CONFIG_ESP_WIFI_CHANNEL
-#define EXAMPLE_MAX_STA_CONN       CONFIG_ESP_MAX_STA_CONN
 
 float amplitude = 0;
 
-static const char *TAGWIFI = "wifi softAP";
 
+rcl_publisher_t publisher;
+//sensor_msgs__msg__Imu msg;
+std_msgs__msg__Float32MultiArray msg;
 
-//bool did_collision_happen_since_last_check() {
-//    bool ret = UART1.int_raw.rs485_clash_int_raw;
-//    UART1.int_clr.rs485_clash_int_clr = 1;  // clear bit
-//    return ret;
-// }
-
-static void wifi_event_handler(void* arg, esp_event_base_t event_base,
-                                    int32_t event_id, void* event_data)
+void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
-    if (event_id == WIFI_EVENT_AP_STACONNECTED) {
-        wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
-        ESP_LOGI(TAGWIFI, "station " MACSTR " join, AID=%d",
-                 MAC2STR(event->mac), event->aid);
-    } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
-        wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
-        ESP_LOGI(TAGWIFI, "station " MACSTR " leave, AID=%d",
-                 MAC2STR(event->mac), event->aid);
-    }
-}
 
-void wifi_init_softap(void)
-{
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_ap();
+	RCLC_UNUSED(last_call_time);
+	if (timer != NULL && myISM.checkStatus() ) {
+        myISM.getAccel(&accelData);
+        myISM.getGyro(&gyroData);
+        msg.layout.dim.size = 1;
+        msg.layout.dim.capacity = 1; 
+        msg.layout.dim.data= (std_msgs__msg__MultiArrayDimension*) malloc(msg.layout.dim.capacity*sizeof(std_msgs__msg__MultiArrayDimension));
+        msg.layout.dim.data[0].label.capacity = 5;
+        msg.layout.dim.data[0].label.size = 5;
+        msg.layout.dim.data[0].label.data = "label";
+        msg.layout.dim.data[0].size = 9;
+        msg.layout.dim.data[0].stride = 9;
+        msg.layout.data_offset = 0;
 
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                        ESP_EVENT_ANY_ID,
-                                                        &wifi_event_handler,
-                                                        NULL,
-                                                        NULL));
-    wifi_config_t wifi_config = {};
-    strcpy((char*)wifi_config.ap.ssid, EXAMPLE_ESP_WIFI_SSID);
-    strcpy((char*)wifi_config.ap.password, EXAMPLE_ESP_WIFI_PASS);
-    wifi_config.ap.ssid_len = strlen(EXAMPLE_ESP_WIFI_SSID);
-    wifi_config.ap.channel = EXAMPLE_ESP_WIFI_CHANNEL;
-    wifi_config.ap.max_connection = EXAMPLE_MAX_STA_CONN;
-    wifi_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
-   
-  
-    if (strlen(EXAMPLE_ESP_WIFI_PASS) == 0) {
-        wifi_config.ap.authmode = WIFI_AUTH_OPEN;
-    }
-
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    ESP_LOGI(TAGWIFI, "wifi_init_softap finished. SSID:%s password:%s channel:%d",
-             EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS, EXAMPLE_ESP_WIFI_CHANNEL);
+        msg.data.capacity = 9;
+        msg.data.size = 9;
+        msg.data.data = (float*) malloc(msg.data.capacity*sizeof(float));
+        msg.data.data[0] = accelData.xData;
+        msg.data.data[1] = accelData.yData;
+        msg.data.data[2] = accelData.zData;
+        msg.data.data[3] = gyroData.xData;
+        msg.data.data[4] = gyroData.yData;
+        msg.data.data[5] = gyroData.zData;
+        msg.data.data[6] = (myMag.getMeasurementX()- 131072.0)/131072.0 *8;
+        msg.data.data[7] = (myMag.getMeasurementY()- 131072.0)/131072.0 *8;
+        msg.data.data[8] = (myMag.getMeasurementZ()- 131072.0)/131072.0 *8;
+        
  
+
+        
+		ESP_LOGI("IMU Publisher","DATA SENT");
+		RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+
+	}
+
+
 }
 
+void micro_ros_task(void * arg)
+{
+	rcl_allocator_t allocator = rcl_get_default_allocator();
+	rclc_support_t support;
+
+	rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
+	RCCHECK(rcl_init_options_init(&init_options, allocator));
+
+#ifdef CONFIG_MICRO_ROS_ESP_XRCE_DDS_MIDDLEWARE
+	rmw_init_options_t* rmw_options = rcl_init_options_get_rmw_init_options(&init_options);
+
+	// Static Agent IP and port can be used instead of autodisvery.
+	RCCHECK(rmw_uros_options_set_udp_address(CONFIG_MICRO_ROS_AGENT_IP, CONFIG_MICRO_ROS_AGENT_PORT, rmw_options));
+	//RCCHECK(rmw_uros_discover_agent(rmw_options));
+#endif
+
+	// create init_options
+	RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
+
+	// create node
+	rcl_node_t node;
+	RCCHECK(rclc_node_init_default(&node, "Qutee_IMU_publisher", "", &support));
+
+	// create publisher
+	RCCHECK(rclc_publisher_init_default(
+		&publisher,
+		&node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+		"Qutee_IMU"));
+
+	// create timer,
+	rcl_timer_t timer;
+	const unsigned int timer_timeout = 1000;
+	RCCHECK(rclc_timer_init_default(
+		&timer,
+		&support,
+		RCL_MS_TO_NS(timer_timeout),
+		timer_callback));
+
+	// create executor
+	rclc_executor_t executor;
+	RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+	RCCHECK(rclc_executor_add_timer(&executor, &timer));
+
+	
+
+	while(1){
+		rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+		usleep(10000);
+	}
+
+	// free resources
+	RCCHECK(rcl_publisher_fini(&publisher, &node));
+	RCCHECK(rcl_node_fini(&node));
+
+  	vTaskDelete(NULL);
+}
 
 
 NNQuteeController<9,1,8,12> nncontroller;
 
+/*
 static void do_retransmit(const int sock)
 {
     int len;
@@ -202,90 +247,7 @@ static void do_retransmit(const int sock)
         }
     } while (len > 0 || (len ==-1 && errno == EWOULDBLOCK));
 }
-
-static void tcp_server_task(void *pvParameters)
-{
-    char addr_str[128];
-    int addr_family = (int)pvParameters;
-    int ip_protocol = 0;
-    int keepAlive = 1;
-    int keepIdle = KEEPALIVE_IDLE;
-    int keepInterval = KEEPALIVE_INTERVAL;
-    int keepCount = KEEPALIVE_COUNT;
-    struct sockaddr_storage dest_addr;
-
-    if (addr_family == AF_INET) {
-        struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-        dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-        dest_addr_ip4->sin_family = AF_INET;
-        dest_addr_ip4->sin_port = htons(PORT);
-        ip_protocol = IPPROTO_IP;
-    }
-
-    int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
-    if (listen_sock < 0) {
-        ESP_LOGE(TAGWIFI, "Unable to create socket: errno %d", errno);
-        vTaskDelete(NULL);
-        return;
-    }
-    int opt = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    ESP_LOGI(TAGWIFI, "Socket created");
-
-    int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    if (err != 0) {
-        ESP_LOGE(TAGWIFI, "Socket unable to bind: errno %d", errno);
-        ESP_LOGE(TAGWIFI, "IPPROTO: %d", addr_family);
-        goto CLEAN_UP;
-    }
-    ESP_LOGI(TAGWIFI, "Socket bound, port %d", PORT);
-
-    err = listen(listen_sock, 1);
-    if (err != 0) {
-        ESP_LOGE(TAGWIFI, "Error occurred during listen: errno %d", errno);
-        goto CLEAN_UP;
-    }
-
-    while (1) {
-
-        ESP_LOGI(TAGWIFI, "Socket listening");
-
-        struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
-        socklen_t addr_len = sizeof(source_addr);
-        int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
-        if (sock < 0) {
-            ESP_LOGE(TAGWIFI, "Unable to accept connection: errno %d", errno);
-            break;
-        }
-
-        // Set tcp keepalive option
-        setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(int));
-        setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepIdle, sizeof(int));
-        setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepInterval, sizeof(int));
-        setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepCount, sizeof(int));
-
-        // Make the socket non blocking
-        fcntl(sock, F_SETFL, O_NONBLOCK);
-
-        // Convert ip address to string
-        if (source_addr.ss_family == PF_INET) {
-            inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
-        }
-        ESP_LOGI(TAGWIFI, "Socket accepted ip address: %s", addr_str);
-
-        do_retransmit(sock);
-
-        shutdown(sock, 0);
-        close(sock);
-    }
-
-CLEAN_UP:
-    close(listen_sock);
-    vTaskDelete(NULL);
-}
-
-
+*/
 
 
 //This namespace is required to use Control table item names
@@ -342,27 +304,8 @@ void init_imu(){
 
 }
 
-
-
-extern "C" void app_main()
-{ 
-   
-    //Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
-    ESP_LOGI(TAGWIFI, "ESP_WIFI_MODE_AP");
-    wifi_init_softap();
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
-
-
-
-    init_imu();
-
+void robot_control_task(void * arg)
+{
     Dynamixel2Arduino dxl;
     QuteeDxlPortHandler dxl_port(UART_NUM_1);
     dxl.setPort(dxl_port);
@@ -418,17 +361,6 @@ extern "C" void app_main()
     params(17) = 0.5;
     params(20) = 0.5;
     params(23) = 0.5;
-   /* params<< 0, 0, 0, 
-             0, 0, 0, 
-
-             0, 0, 0, 
-             0, 0, 0, 
-
-             0, 0, 0, 
-             0, 0, 0, 
-
-             0, 0, 0, 
-             0, 0, 0; */
 
               
     QuteeController ctrl(params);
@@ -436,7 +368,9 @@ extern "C" void app_main()
     const int begin_time = esp_timer_get_time();
     while(1){
         std::this_thread::sleep_for(std::chrono::microseconds(1000));   
-        if (ctrl.parameters()[0]!= amplitude)
+
+
+        /*if (ctrl.parameters()[0]!= amplitude)
         {   
             params(0) = amplitude;
             params(3) = amplitude;
@@ -450,16 +384,64 @@ extern "C" void app_main()
         }
          
         float time = float( esp_timer_get_time() - begin_time )/1000000.0;
-        Eigen::VectorXf pos = ctrl.pos(time);
+        Eigen::VectorXf pos = ctrl.pos(time);*/
+
+        if( myISM.checkStatus() ){
+        myISM.getAccel(&accelData);
+        myISM.getGyro(&gyroData);
+        Eigen::Matrix< float , 9 , 1> imu_data;
+        imu_data << accelData.xData,
+                    accelData.yData,
+                    accelData.zData,
+                    gyroData.xData, 
+                    gyroData.yData, 
+                    gyroData.zData,
+                    ((double)myMag.getMeasurementX()- 131072.0)/131072.0 *8,
+                    ((double)myMag.getMeasurementY()- 131072.0)/131072.0 *8, 
+                    ((double)myMag.getMeasurementZ()- 131072.0)/131072.0 *8;
+
+        auto pos = nncontroller.pos(imu_data);
+
+
         for(size_t i = 0; i<12; i++){
-          dxl.setGoalPosition(DXL_IDs[i], (size_t) 2048+pos[i]*4096.0/(2*3.14));
-          //ESP_LOGI("TEST","ID:%i  VS Target Pos : %f : %f ", DXL_IDs[i], time, (size_t) 2048+pos[i]*4096.0/(2*3.14)); 
+          //dxl.setGoalPosition(DXL_IDs[i], (size_t) 2048+pos[i]*4096.0/(2*3.14));
+          dxl.setGoalPosition(DXL_IDs[i], (size_t) 2048+pos[i]*256);
+          ESP_LOGI("TEST","ID:%i: %f ", DXL_IDs[i], (size_t) 2048+pos[i]*4096.0/(2*3.14)); 
         }
         //int cur_pos= dxl.getPresentPosition(DXL_ID);
         //ESP_LOGI(TAG,"Present_Position(raw) :%i  VS Target Pos : %i ", cur_pos, target_pos ); 
         //delay(10);
-
+        }
 
 
     }
+
+}
+
+extern "C" void app_main()
+{ 
+    #if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
+    ESP_ERROR_CHECK(uros_network_interface_initialize());
+    #endif
+    
+    init_imu();
+
+
+    //pin micro-ros task in APP_CPU to make PRO_CPU to deal with wifi:
+   /* xTaskCreate(micro_ros_task,
+            "uros_task",
+            CONFIG_MICRO_ROS_APP_STACK,
+            NULL,
+            CONFIG_MICRO_ROS_APP_TASK_PRIO,
+            NULL);  */
+
+    //pin micro-ros task in APP_CPU to make PRO_CPU to deal with wifi:
+    xTaskCreate(robot_control_task,
+            "uros_task",
+            CONFIG_ROBOT_CTRL_APP_STACK,
+            NULL,
+            CONFIG_ROBOT_CTRL_APP_TASK_PRIO,
+            NULL);  
+
+    
 }
