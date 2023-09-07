@@ -1,12 +1,6 @@
 [submodule "software/components/Dynamixel2Arduino"]
 	path = software/components/Dynamixel2Arduino
 	url = https://github.com/ROBOTIS-GIT/Dynamixel2Arduino.git
-[submodule "software/components/SparkFun_6DoF_ISM330DHCX_Arduino_Library"]
-	path = software/components/SparkFun_6DoF_ISM330DHCX_Arduino_Library
-	url = https://github.com/sparkfun/SparkFun_6DoF_ISM330DHCX_Arduino_Library.git
-[submodule "software/components/SparkFun_MMC5983MA_Magnetometer_Arduino_Library"]
-	path = software/components/SparkFun_MMC5983MA_Magnetometer_Arduino_Library
-	url = https://github.com/sparkfun/SparkFun_MMC5983MA_Magnetometer_Arduino_Library.git
 [submodule "software/components/micro_ros_espidf_component"]
 	path = software/components/micro_ros_espidf_component
 	url = https://github.com/micro-ROS/micro_ros_espidf_component.git

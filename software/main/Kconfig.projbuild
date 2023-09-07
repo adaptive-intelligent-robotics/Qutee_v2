@@ -8,7 +8,7 @@ menu "QUTEE settings"
 
     config MICRO_ROS_APP_TASK_PRIO
         int "Priority of the micro-ROS app"
-        default 5
+        default 1
         help
         Priority of micro-ros task higher value means higher priority
 
@@ -20,8 +20,25 @@ menu "QUTEE settings"
 
     config ROBOT_CTRL_APP_TASK_PRIO
         int "Priority of the Robot Controll app"
-        default 5
+        default 10
         help
         Priority of  Robot Controll task higher value means higher priority
+
+    config NB_HIDDEN_LAYERS 
+        int "Number of Hidden Layers in the neural network"
+        default 1
+        help
+        Number of Hidden Layers in the neural network
+
+    config NB_NEURONS_PER_LAYER
+        int "Number of neuron per hidden layer"
+        default 10
+        help
+        Number of neuron per hidden layer. Every hidden layer has the same size. 
+    config QUTEE_NAME
+        string "Name of the Qutee robot"
+        default "qutee"
+        help
+        Name of the Qutee robot. Useful if multiple robots are used. This is used as prefix for the ROS2 topic/service names. 
         
 endmenu
