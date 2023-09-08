@@ -1,6 +1,6 @@
 
 
-idf_component_register(SRCS "main.cpp" 
+idf_component_register(SRCS "main.cpp"
                             "Qutee.cpp"       
                             "QuteeDxlPortHandler.cpp"
                             "../components/Dynamixel2Arduino/src/Dynamixel2Arduino.cpp" 

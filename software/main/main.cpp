@@ -57,11 +57,15 @@ Qutee robot;
 
 
 
+
+
+
+
 void weights_receiver(const void * msgin)
 {
     const std_msgs__msg__Float32MultiArray * msg = (const std_msgs__msg__Float32MultiArray *)msgin;
     ESP_LOGI("Weights receiver:","%i weights received", msg->data.size);  
-    std::copy(msg->data.data, msg->data.data + msg->data.size, robot.get_policy().get_weights().data());
+     std::copy(msg->data.data, msg->data.data + msg->data.size, robot.get_policy().get_weights().data());
     return;
 }
 
@@ -174,7 +178,7 @@ void micro_ros_task(void * arg)
 void robot_control_task(void * arg)
 {   
     while(1){
-        std::this_thread::sleep_for(std::chrono::microseconds(1000));   
+        //std::this_thread::sleep_for(std::chrono::microseconds(1000));   
         robot.control_step();
 
     }
@@ -182,19 +186,16 @@ void robot_control_task(void * arg)
 }
 
 
-
-
-
-
-
-
-
-
-
-
 extern "C" void app_main()
 { 
-   /*#if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
+
+    robot.init();
+    while(1){
+        //std::this_thread::sleep_for(std::chrono::microseconds(1000));   
+        robot.control_step();
+
+    }
+      /*#if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
     ESP_ERROR_CHECK(uros_network_interface_initialize());
     #endif*/
     
@@ -208,12 +209,12 @@ extern "C" void app_main()
             NULL);  */
 
     //pin micro-ros task in APP_CPU to make PRO_CPU to deal with wifi:
-    xTaskCreate(robot_control_task,
+    /*xTaskCreate(robot_control_task,
             "uros_task",
             CONFIG_ROBOT_CTRL_APP_STACK,
             NULL,
             CONFIG_ROBOT_CTRL_APP_TASK_PRIO,
             NULL);  
 
-    
+    */
 }
