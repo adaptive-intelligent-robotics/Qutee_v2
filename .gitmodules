@@ -4,3 +4,24 @@
 [submodule "software/components/micro_ros_espidf_component"]
 	path = software/components/micro_ros_espidf_component
 	url = https://github.com/micro-ROS/micro_ros_espidf_component.git
+[submodule "software/components/Adafruit_Sensor"]
+        path = software/components/Adafruit_Sensor
+        url = https://github.com/adafruit/Adafruit_Sensor
+[submodule "software/components/Adafruit_Seesaw"]
+        path = software/components/Adafruit_Seesaw
+        url = https://github.com/adafruit/Adafruit_Seesaw
+[submodule "software/components/Adafruit_BusIO"]
+        path = software/components/Adafruit_BusIO
+        url = https://github.com/adafruit/Adafruit_BusIO
+[submodule "software/components/Adafruit_BNO055"]
+        path = software/components/Adafruit_BNO055
+        url = https://github.com/adafruit/Adafruit_BNO055
+[submodule "software/components/Adafruit-GFX-Library"]
+        path = software/components/Adafruit-GFX-Library
+        url = https://github.com/adafruit/Adafruit-GFX-Library
+[submodule "software/components/Adafruit-ST7735-Library"]
+        path = software/components/Adafruit-ST7735-Library
+        url = https://github.com/adafruit/Adafruit-ST7735-Library
+[submodule "software/components/arduino-esp32"]
+        path = software/components/arduino-esp32
+        url = https://github.com/espressif/arduino-esp32.git
