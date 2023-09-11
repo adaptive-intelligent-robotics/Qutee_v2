@@ -179,7 +179,7 @@ void robot_control_task(void * arg)
 {   
     while(1){
         //std::this_thread::sleep_for(std::chrono::microseconds(1000));   
-        robot.control_step();
+        //robot.control_step();
 
     }
 
@@ -191,9 +191,16 @@ extern "C" void app_main()
 
     robot.init();
     while(1){
-        //std::this_thread::sleep_for(std::chrono::microseconds(1000));   
-        robot.control_step();
+        uint32_t begin_time = esp_log_timestamp();
+        for(size_t i = 0; i<10; i++)
+        {
+        //std::this_thread::sleep_for(std::chrono::microseconds(1000));     
+            robot.control_loop(5.0);
 
+        }
+        uint32_t duration = esp_log_timestamp() - begin_time;
+        ESP_LOGI("Control Loop","\tTimings: FREQ: %f", 10.0f*1000.0f / (float) duration);
+   
     }
       /*#if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
     ESP_ERROR_CHECK(uros_network_interface_initialize());

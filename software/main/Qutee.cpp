@@ -2,7 +2,55 @@
 #include <inttypes.h>
 const int Qutee::DXL_IDs[] = {11, 12, 13, 21, 22, 23,  31, 32, 33, 41, 42, 43};
 
+void Qutee::init(){
+  
+        //Wire.setPins(GPIO_NUM_3,GPIO_NUM_4);
+        //Wire.begin();
+        init_tft();
+        tft_load_screen();
+        _dxl.setPort(_dxl_port);
+        int32_t baud = 3000000;
+        int8_t  protocol = 2;       
+        _dxl.setPortProtocolVersion((float) protocol);
+        ESP_LOGI("DXL: ","PROTOCOL %i", protocol);
+        ESP_LOGI("DXL: ","BAUDRATE %i\n", baud);
+        _dxl.begin(baud);
 
+        // Fill the members of structure to syncRead using external user packet buffer
+        _sr_infos.packet.p_buf = _user_pkt_buf;
+        _sr_infos.packet.buf_capacity = _user_pkt_buf_cap;
+        _sr_infos.packet.is_completed = false;
+        _sr_infos.addr = SR_START_ADDR;
+        _sr_infos.addr_length = SR_ADDR_LEN;
+        _sr_infos.p_xels = _info_xels_sr;
+        _sr_infos.xel_count = 0;  
+
+        for(int i = 0; i < DXL_ID_CNT; i++){
+          _info_xels_sr[i].id = DXL_IDs[i];
+          _info_xels_sr[i].p_recv_buf = (uint8_t*)&_sr_data[i];
+          _sr_infos.xel_count++;
+        }
+        _sr_infos.is_info_changed = true;
+
+        // Fill the members of structure to syncWrite using internal packet buffer
+        _sw_infos.packet.p_buf = nullptr;
+        _sw_infos.packet.is_completed = false;
+        _sw_infos.addr = SW_START_ADDR;
+        _sw_infos.addr_length = SW_ADDR_LEN;
+        _sw_infos.p_xels = _info_xels_sw;
+        _sw_infos.xel_count = 0;
+
+        for(int i = 0; i < DXL_ID_CNT; i++){
+          _info_xels_sw[i].id = DXL_IDs[i];
+          _info_xels_sw[i].p_data = (uint8_t*)&_sw_data[i].goal_position;
+          _sw_infos.xel_count++;
+        }
+        _sw_infos.is_info_changed = true;
+        
+        init_imu();
+        init_motors();
+        tft_init_data_screen();
+    }
 void Qutee::init_imu(){
 
   Wire.setPins(GPIO_NUM_3,GPIO_NUM_4);
@@ -144,22 +192,20 @@ void Qutee::displaySensorStatus(void)
 }
 
 void Qutee::get_state(State_t& state_ref)
-{
-    sensors_event_t orientationData , linearAccelData;
-    this->_bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-    //  bno.getEvent(&angVelData, Adafruit_BNO055::VECTOR_GYROSCOPE);
-    this->_bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
-    
-    state_ref.setValues({{this->DEG_2_RAD * orientationData.orientation.x},
-                    {this->DEG_2_RAD * orientationData.orientation.y},
-                    {this->DEG_2_RAD * orientationData.orientation.z},
-                    {linearAccelData.acceleration.x}, 
-                    {linearAccelData.acceleration.y},
-                    {linearAccelData.acceleration.z}});
-    /*for(size_t i = 0; i<12; i++){
-        state_ref(i+9,0)= (this->_dxl.getPresentPosition(this->DXL_IDs[i])-2048.0f)/256.0f;
-    }*/
-    this->get_motor_positions(state_ref,9);
+{    
+  sensors_event_t orientationData , linearAccelData;
+  this->_bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+  //  bno.getEvent(&angVelData, Adafruit_BNO055::VECTOR_GYROSCOPE);
+  this->_bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+  
+  state_ref.setValues({{this->DEG_2_RAD * orientationData.orientation.x},
+                  {this->DEG_2_RAD * orientationData.orientation.y},
+                  {this->DEG_2_RAD * orientationData.orientation.z},
+                  {linearAccelData.acceleration.x}, 
+                  {linearAccelData.acceleration.y},
+                  {linearAccelData.acceleration.z}});
+
+  this->get_motor_positions(state_ref,9);
 
 }
 
@@ -200,55 +246,37 @@ void Qutee::get_motor_positions(State_t& state_ref, size_t offset)
 
 }
 
-void Qutee::control_step(){
-    //ESP_LOGI("Control Loop","\tT1 %" PRIu32 ", T2 %" PRIu32 "",this->_last_time, esp_log_timestamp());
-    uint32_t full_period = esp_log_timestamp() - this->_last_time;
-    uint32_t begin_time = esp_log_timestamp();
-    this->_last_time = begin_time;
-    
- 
+void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
+  //Get state
+  this->get_state(state_to_fill);
+  // Call policy
+  this->_policy.pos(state_to_fill, actions_to_fill);
+  // Send actions
+  this->send_actions(actions_to_fill);
+  // Print on screen. This takes ages, so disabled for now
+  //this->tft_update_data_screen(_state, pos, 1000.0f / (float) full_period ); // period is in us        
+ }
 
-    //Get state
-    State_t _state; // Why initializing this in the attributes makes "_last time" negative... or very large...
-    this->get_state(_state);
-    uint32_t state_duration = esp_log_timestamp() - begin_time;
-   
-    begin_time = esp_log_timestamp();
-    auto pos = this->_nncontroller.pos(_state);
-    uint32_t policy_duration = esp_log_timestamp() - begin_time;
+ void Qutee::control_loop(float duration_s){
   
-    
-    begin_time = esp_log_timestamp();
-    // Send actions
-    this->send_actions(pos);
-    // Timings
-    uint32_t action_duration = esp_log_timestamp() - begin_time;
+  float control_freq = 50; //Hz
+  int nb_steps = floor(duration_s * control_freq); 
+  int64_t period = floor(duration_s * 1000000.0f / nb_steps);
 
-    begin_time = esp_log_timestamp();
-    // Print on screen
-    this->tft_update_data_screen(_state, pos, 1000.0f / (float) full_period ); // period is in us
-    // Timings
-    uint32_t print_duration = esp_log_timestamp() - begin_time;
-    
-    ESP_LOGI("Control Loop","\tTimings: FREQ: %f,\tfull_period: %" PRIu32 "us,\tstate_duration: %" PRIu32 "us,\tpolicy_duration: %" PRIu32 "us,\taction_duration: %" PRIu32 "us,\tprint_duration: %" PRIu32 "us",
-    1000.0f / (float) full_period, full_period, state_duration, policy_duration, action_duration, print_duration);
-   
-    /*ESP_LOGI("TEST","\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f\tID:%i: %f", 
-    DXL_IDs[0], pos(0,0),
-    DXL_IDs[1], pos(1,0),
-    DXL_IDs[2], pos(2,0),
-    DXL_IDs[3], pos(3,0),
-    DXL_IDs[4], pos(4,0),
-    DXL_IDs[5], pos(5,0),
-    DXL_IDs[6], pos(6,0),
-    DXL_IDs[7], pos(7,0),
-    DXL_IDs[8], pos(8,0),
-    DXL_IDs[9], pos(9,0),
-    DXL_IDs[10], pos(10,0),
-    DXL_IDs[11], pos(11,0)); */
-    //int cur_pos= dxl.getPresentPosition(DXL_ID);
-    //ESP_LOGI(TAG,"Present_Position(raw) :%i  VS Target Pos : %i ", cur_pos, target_pos ); 
-    //delay(10);
-      
-        
+  std::vector<State_t> states(nb_steps);
+  std::vector<Actions_t> actions(nb_steps);
+  int64_t start, sleep_duration;
+  int64_t start_loop = esp_timer_get_time();
+  for(size_t step = 0;step< nb_steps; step++)
+  {
+    start = esp_timer_get_time();
+    control_step(states[step],actions[step]);
+    sleep_duration = period - (esp_timer_get_time() - start);
+    //ESP_LOGI("Control Loop", "Period: %" PRId64" Start: %" PRId64" Sleep %" PRId64,period,  start, sleep_duration);
+    if(sleep_duration>0)
+      std::this_thread::sleep_for(std::chrono::microseconds(sleep_duration));   
+    else
+      ESP_LOGE("Control Loop"," Error: loop duration: %" PRId64" longer than period: %" PRId64, esp_timer_get_time() - start, period);
+  }
+  ESP_LOGI("Control Loop", "duration of the loop: %" PRId64, esp_timer_get_time() - start_loop);
  }

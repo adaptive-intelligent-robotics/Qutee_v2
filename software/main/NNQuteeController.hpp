@@ -62,7 +62,7 @@ public:
 
 
 
-    Eigen::TensorFixedSize< float , Eigen::Sizes<n_outputs, 1> > pos(Eigen::TensorFixedSize< float , Eigen::Sizes<n_inputs, 1> >& inputs) const
+    void pos(Eigen::TensorFixedSize< float , Eigen::Sizes<n_inputs, 1> >& inputs, Eigen::TensorFixedSize< float , Eigen::Sizes<n_outputs, 1> > & actions_to_fill) const
     {
         assert(inputs.size() == n_inputs);
         Eigen::array<Eigen::IndexPair<int>, 1> product_dims = { Eigen::IndexPair<int>(1, 0) }; // dimension order for standard matrix multiplication when using tensor  https://eigen.tuxfamily.org/dox/unsupported/eigen_tensors.html#title56 
@@ -81,9 +81,9 @@ public:
         if(n_layers - 1 > 0)
             for(size_t l = 0; l<n_layers - 1 ;l++) // for every hidden layer.
                 augmented_intermediate.slice(offsets, extents) = _weights_hidden.chip(l,2).contract(augmented_intermediate, product_dims).tanh(); // We do thre same has before, but we "chip", to slice the corresponding set of weights of the specific layer.
-        Eigen::TensorFixedSize< float , Eigen::Sizes<n_outputs, 1> > outputs = _weights_ouputs.contract(augmented_intermediate, product_dims).tanh(); //final output layer. 
+        actions_to_fill = _weights_ouputs.contract(augmented_intermediate, product_dims).tanh(); //final output layer. 
 
-        return outputs;
+        return;
  
     }
 
