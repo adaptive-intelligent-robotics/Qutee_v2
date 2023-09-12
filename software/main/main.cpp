@@ -23,6 +23,8 @@
 //#include <sensor_msgs/msg/imu.h>
 #include <std_msgs/msg/float32_multi_array.h>
 #include <std_msgs/msg/float32.h>
+#include "qutee_msg/srv/rollout.h"
+#include "qutee_msg/srv/get_num_params.h"
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 
@@ -61,11 +63,13 @@ Qutee robot;
 
 
 
-void weights_receiver(const void * msgin)
+void get_num_params_callback(const void * req, void * res)
 {
-    const std_msgs__msg__Float32MultiArray * msg = (const std_msgs__msg__Float32MultiArray *)msgin;
-    ESP_LOGI("Weights receiver:","%i weights received", msg->data.size);  
-     std::copy(msg->data.data, msg->data.data + msg->data.size, robot.get_policy().get_weights().data());
+    qutee_msg__srv__GetNumParams_Request * req_in = (qutee_msg__srv__GetNumParams_Request *) req; // This should be empty
+    qutee_msg__srv__GetNumParams_Response * res_in = (qutee_msg__srv__GetNumParams_Response *) res;
+    ESP_LOGI("ROS: ","Entered the service callback");  
+    res_in->num_params=robot.get_policy().get_number_weights();
+
     return;
 }
 
@@ -139,6 +143,29 @@ void micro_ros_task(void * arg)
     rcl_node_t node;
     RCCHECK(rclc_node_init_default(&node, CONFIG_QUTEE_NAME, "", &support));
 
+
+    // create service
+    rcl_service_t service;
+    RCCHECK(rclc_service_init_default(&service, &node, ROSIDL_GET_SRV_TYPE_SUPPORT(qutee_msg, srv, Rollout), "/get_num_params"));
+
+    // create executor
+    rclc_executor_t executor;
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+
+    qutee_msg__srv__GetNumParams_Response res;
+    qutee_msg__srv__GetNumParams_Request req;
+    RCCHECK(rclc_executor_add_service(&executor, &service, &req, &res, get_num_params_callback));
+
+    // Spin forever
+	while(1){
+		rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+		usleep(100000);
+	}
+
+	// Free resources
+    RCCHECK(rcl_service_fini(&service, &node));
+    RCCHECK(rcl_node_fini(&node));
+/*
  	// Create subscriber.
 	RCCHECK(rclc_subscription_init_default(
 		&subscriber,
@@ -163,6 +190,7 @@ void micro_ros_task(void * arg)
 	RCCHECK(rcl_node_fini(&node));
 
   	vTaskDelete(NULL);
+    */
 }
 
 
@@ -192,10 +220,10 @@ extern "C" void app_main()
     robot.init();
     while(1){
         uint32_t begin_time = esp_log_timestamp();
-        for(size_t i = 0; i<10; i++)
+        for(size_t i = 0; i<2; i++)
         {
         //std::this_thread::sleep_for(std::chrono::microseconds(1000));     
-            robot.control_loop(5.0);
+            robot.control_loop(1.0);
 
         }
         uint32_t duration = esp_log_timestamp() - begin_time;

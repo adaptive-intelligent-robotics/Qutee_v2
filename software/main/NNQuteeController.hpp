@@ -13,6 +13,7 @@
 #include <eigen3/Eigen/Eigen>
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 
+#include <esp_log.h>
 
 
 template<size_t n_inputs, size_t n_layers, size_t n_neurons, size_t n_outputs>
@@ -82,7 +83,6 @@ public:
             for(size_t l = 0; l<n_layers - 1 ;l++) // for every hidden layer.
                 augmented_intermediate.slice(offsets, extents) = _weights_hidden.chip(l,2).contract(augmented_intermediate, product_dims).tanh(); // We do thre same has before, but we "chip", to slice the corresponding set of weights of the specific layer.
         actions_to_fill = _weights_ouputs.contract(augmented_intermediate, product_dims).tanh(); //final output layer. 
-
         return;
  
     }

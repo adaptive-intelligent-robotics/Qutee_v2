@@ -248,6 +248,7 @@ void Qutee::get_motor_positions(State_t& state_ref, size_t offset)
 
 void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
   //Get state
+
   this->get_state(state_to_fill);
   // Call policy
   this->_policy.pos(state_to_fill, actions_to_fill);
@@ -263,14 +264,21 @@ void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
   int nb_steps = floor(duration_s * control_freq); 
   int64_t period = floor(duration_s * 1000000.0f / nb_steps);
 
-  std::vector<State_t> states(nb_steps);
-  std::vector<Actions_t> actions(nb_steps);
+  std::vector<State_t,Eigen::aligned_allocator<State_t> > states(nb_steps);
+  std::vector<Actions_t,Eigen::aligned_allocator<Actions_t> > actions(nb_steps);
   int64_t start, sleep_duration;
   int64_t start_loop = esp_timer_get_time();
   for(size_t step = 0;step< nb_steps; step++)
-  {
+  {  
+    State_t state_to_fill;
+    Actions_t actions_to_fill;
+
     start = esp_timer_get_time();
-    control_step(states[step],actions[step]);
+
+    control_step(state_to_fill,actions_to_fill);
+    states[step] = state_to_fill;
+    actions[step] = actions_to_fill;
+
     sleep_duration = period - (esp_timer_get_time() - start);
     //ESP_LOGI("Control Loop", "Period: %" PRId64" Start: %" PRId64" Sleep %" PRId64,period,  start, sleep_duration);
     if(sleep_duration>0)
