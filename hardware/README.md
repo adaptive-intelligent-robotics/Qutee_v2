@@ -23,8 +23,8 @@ The STLs of the different elements are available in the STL folder. Here is the 
 |  Min. Qty. | Reference  | Example of provider | 
 |---|---|---|
 |12x| Motor: Robotis - Dynamixel XL330-M288-T| https://robosavvy.co.uk/robotis-dynamixel-xl330-m288-t.html|
-|1x| Micro-controller: Adafruit ESP32-S3 Feather with 4MB Flash 2MB PSRAM - STEMMA QT / Qwiic| https://shop.pimoroni.com/products/adafruit-esp32-s3-feather-with-4mb-flash-2mb-psram-stemma-qt-qwiic?variant=40017517215827|
-|1x| IMU: SparkFun 9DoF IMU Breakout - ISM330DHCX, MMC5983MA (Qwiic)| https://robosavvy.co.uk/sparkfun-9dof-imu-breakout-ism330dhcx-mmc5983ma-qwiic.html|
+|1x| Micro-controller: Adafruit ESP32-S3 Reverse TFT Feather - 4MB Flash, 2MB PSRAM, STEMMA QT (for non-TFT: Adafruit ESP32-S3 Feather with 4MB Flash 2MB PSRAM - STEMMA QT / Qwiic| [https://shop.pimoroni.com/products/adafruit-esp32-s3-feather-with-4mb-flash-2mb-psram-stemma-qt-qwiic?variant=40017517215827](https://thepihut.com/products/adafruit-esp32-s3-reverse-tft-feather-4mb-flash-2mb-psram-stemma-qt)|
+|1x| IMU: Adafruit 9-DOF Absolute Orientation IMU Fusion Breakout - BNO055 (STEMMA QT / Qwiic)| [https://robosavvy.co.uk/sparkfun-9dof-imu-breakout-ism330dhcx-mmc5983ma-qwiic.html](https://thepihut.com/products/adafruit-9-dof-absolute-orientation-imu-fusion-breakout-bno055-stemma-qt-qwiic)|
 |1x| IMU cable: Flexible Qwiic Cable - 100mm| https://robosavvy.co.uk/flexible-qwiic-cable-100mm.html|
 |1x| Battery: 2/3 AF 1600mAh 4.8V Square Premium Sport NiMH Battery| https://www.overlander.co.uk/nimh-batteries/4-8v-4s/2-3-af-1600mah-4-8v-square-premium-sport-nimh-battery.html (You will need a charger for this too). |
 |1x| Power Board: ROBOTIS - U2D2 PHB SET| https://robosavvy.co.uk/robotis-u2d2-phb-set.html|
