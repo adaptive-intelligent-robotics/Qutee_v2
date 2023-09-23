@@ -20,7 +20,7 @@ template<size_t n_inputs, size_t n_layers, size_t n_neurons, size_t n_outputs>
 class NNQuteeController {
 public:
     static const int number_weigts = n_neurons* (n_inputs + 1) + n_neurons*(n_neurons+1)* (n_layers - 1) + n_outputs * (n_neurons + 1);
-
+    typedef Eigen::TensorFixedSize< float, Eigen::Sizes<NNQuteeController<n_inputs, n_layers, n_neurons, n_outputs>::number_weigts, 1> > Weight_array_t;
     NNQuteeController():
     _weights(),
     _weights_inputs(_weights.data(),  n_neurons , n_inputs + 1),
@@ -41,12 +41,12 @@ public:
          
     }
 
-    void set_weights(const Eigen::TensorFixedSize< float, Eigen::Sizes<NNQuteeController<n_inputs, n_layers, n_neurons, n_outputs>::number_weigts, 1> >& weights)
+    void set_weights(const Weight_array_t& weights)
     {
         _weights = weights;
     }
 
-    Eigen::TensorFixedSize< float, Eigen::Sizes<NNQuteeController<n_inputs, n_layers, n_neurons, n_outputs>::number_weigts, 1> >& get_weights()
+    Weight_array_t& get_weights()
     {
        return _weights;
     }
@@ -90,7 +90,7 @@ public:
     
 
 protected:
-    Eigen::TensorFixedSize< float, Eigen::Sizes<NNQuteeController<n_inputs, n_layers, n_neurons, n_outputs>::number_weigts, 1> > _weights;
+    Weight_array_t _weights;
     Eigen::TensorMap<Eigen::TensorFixedSize< float , Eigen::Sizes<n_neurons , n_inputs + 1> > > _weights_inputs;
     Eigen::TensorMap<Eigen::TensorFixedSize< float , Eigen::Sizes<n_neurons , n_neurons + 1, n_layers - 1> > > _weights_hidden;
     Eigen::TensorMap<Eigen::TensorFixedSize< float , Eigen::Sizes<n_outputs ,  n_neurons + 1> > > _weights_ouputs;

@@ -30,6 +30,7 @@ menu "QUTEE settings"
         help
         Number of Hidden Layers in the neural network
 
+
     config NB_NEURONS_PER_LAYER
         int "Number of neuron per hidden layer"
         default 10
@@ -41,4 +42,17 @@ menu "QUTEE settings"
         help
         Name of the Qutee robot. Useful if multiple robots are used. This is used as prefix for the ROS2 topic/service names. 
         
+    config CONTROL_FREQUENCY
+        int "Control freqency for the Qutee, in Hz"
+        default 50
+        help
+        Control freqency for the Qutee
+
+    config EPISODE_DURATION
+        int "Duration of an episode in seconds"
+        default 5
+        help
+        Duration of an episode
+    
+    
 endmenu

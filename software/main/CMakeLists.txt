@@ -34,6 +34,7 @@ idf_build_get_property(PACKAGES BUILD_COMPONENTS)
 
 # Add includes for each package
 foreach(package ${PACKAGES})
+    message([AUTHOR_WARNING] "BLA BLA lsit: ${package}")
     idf_component_get_property(${package}_dir ${package} COMPONENT_DIR)
     idf_component_get_property(${package}_includes ${package} INCLUDE_DIRS)
     list(TRANSFORM ${package}_includes PREPEND " -I${${package}_dir}/")
@@ -44,7 +45,11 @@ endforeach()
 foreach(package ${PACKAGES})
     string(APPEND IDF_INCLUDES "${${package}_includes_string}")
 endforeach()
-  
+
+string(APPEND IDF_INCLUDES " -I/micro_ros_espidf_component/components/micro_ros_espidf_component/include/std_msgs/") #ugly hack, but it works. 
+
+message([AUTHOR_WARNING] "BLA BLA include: ${IDF_INCLUDES}")
+
 execute_process(
     WORKING_DIRECTORY ${COMPONENT_DIR}
     COMMAND

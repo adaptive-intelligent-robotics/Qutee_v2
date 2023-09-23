@@ -50,6 +50,7 @@ void Qutee::init(){
         init_imu();
         init_motors();
         tft_init_data_screen();
+        go_to_neutral_pose();
     }
 void Qutee::init_imu(){
 
@@ -68,8 +69,9 @@ void Qutee::init_imu(){
   ESP_LOGI("IMU","Init imu Done");
   delay(1000);
   ESP_LOGI("IMU","Setting NDOF mode");
-  this->_bno.setMode(OPERATION_MODE_NDOF);
+  this->_bno.setMode(OPERATION_MODE_IMUPLUS);
   displaySensorStatus();
+  calibration();
   ESP_LOGI("IMU","IMU DONE.");
     
 }
@@ -152,32 +154,69 @@ void Qutee::tft_update_data_screen(const State_t& state, const Actions_t& action
 }
 
 
-void Qutee::scan(){
-        // put your setup code here, to run once:
-        int8_t found_dynamixel = 0;
-        for(int id = 0; id < DXL_BROADCAST_ID; id++) {
-            //iterate until all ID in each buadrate is scanned.
-            if(this->_dxl.ping(id)) {
-            ESP_LOGI("DXL: ","ID : %i  , Model Number: %i \n",id,this->_dxl.getModelNumber(id));
-            found_dynamixel++;
-            }
-        }   
-        ESP_LOGI("DXL: ","Total %i DYNAMIXEL(s) found!\n",found_dynamixel );
-    }
+void Qutee::calibration()
+{
+  uint8_t system, gyro, accel, mag;
+  system = gyro = accel = mag = 0;
+
+  this->_tft.setTextWrap(false);
+  this->_tft.fillScreen(ST77XX_BLACK);
+  this->_tft.setTextColor(ST77XX_BLUE,ST77XX_BLACK); 
+  this->_tft.setTextSize(2);
+
+  while(!this->_bno.isFullyCalibrated()){
+    this->_bno.getCalibration(&system, &gyro, &accel, &mag);
+    ESP_LOGI("CALIBRATION: ","system %i, gyro %i, accel %i, mag %i\n",  system , gyro ,accel, mag);
+    this->_tft.setCursor(0, 30);
+    this->_tft.print("system: "); this->_tft.println(system);
+    this->_tft.print("gyro: "); this->_tft.println(gyro);
+    this->_tft.print("accel: "); this->_tft.println(accel);
+    this->_tft.print("mag: "); this->_tft.println(mag);
+  }
+  this->_tft.fillScreen(ST77XX_BLACK);
+  this->_tft.setCursor(0, 30);
+  this->_tft.setTextColor(ST77XX_GREEN);
+  this->_tft.setTextSize(4);
+    this->_tft.println("CALIBRATION\n DONE! ");
+}
+
+
+
+void Qutee::scan()
+{
+  // put your setup code here, to run once:
+  int8_t found_dynamixel = 0;
+  for(int id = 0; id < DXL_BROADCAST_ID; id++) {
+      //iterate until all ID in each buadrate is scanned.
+      if(this->_dxl.ping(id)) {
+      ESP_LOGI("DXL: ","ID : %i  , Model Number: %i \n",id,this->_dxl.getModelNumber(id));
+      found_dynamixel++;
+      }
+  }   
+  ESP_LOGI("DXL: ","Total %i DYNAMIXEL(s) found!\n",found_dynamixel );
+}
 
 void Qutee::init_motors()
-    {
-             // Turn off torque when configuring items in EEPROM area
-     for(size_t i = 0; i<12; i++)
-      {   
-        this->_dxl.torqueOff(this->DXL_IDs[i]);
-        this->_dxl.setOperatingMode(this->DXL_IDs[i], OP_POSITION);
-        this->_dxl.torqueOn(this->DXL_IDs[i]);
+{
+          // Turn off torque when configuring items in EEPROM area
+  for(size_t i = 0; i<12; i++)
+  {   
+    this->_dxl.torqueOff(this->DXL_IDs[i]);
+    this->_dxl.setOperatingMode(this->DXL_IDs[i], OP_POSITION);
+    this->_dxl.torqueOn(this->DXL_IDs[i]);
 
-        // Limit the maximum velocity in Position Control Mode. Use 0 for Max speed
-        this->_dxl.writeControlTableItem(PROFILE_VELOCITY, DXL_IDs[i], 0);
-    }
-    }
+    // Limit the maximum velocity in Position Control Mode. Use 0 for Max speed
+    this->_dxl.writeControlTableItem(PROFILE_VELOCITY, DXL_IDs[i], 0);
+}
+}
+
+void Qutee::go_to_neutral_pose()
+{
+  Actions_t actions;
+  actions = actions *0.0f;
+  send_actions(actions);
+
+}
 
 void Qutee::displaySensorStatus(void)
 {
@@ -258,17 +297,13 @@ void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
   //this->tft_update_data_screen(_state, pos, 1000.0f / (float) full_period ); // period is in us        
  }
 
- void Qutee::control_loop(float duration_s){
-  
-  float control_freq = 50; //Hz
-  int nb_steps = floor(duration_s * control_freq); 
-  int64_t period = floor(duration_s * 1000000.0f / nb_steps);
-
-  std::vector<State_t,Eigen::aligned_allocator<State_t> > states(nb_steps);
-  std::vector<Actions_t,Eigen::aligned_allocator<Actions_t> > actions(nb_steps);
+ void Qutee::run_episode(){
+  if(!this->_bno.isFullyCalibrated()) {this->calibration();}
+  go_to_neutral_pose();
+  std::this_thread::sleep_for(std::chrono::microseconds(1000000));
   int64_t start, sleep_duration;
   int64_t start_loop = esp_timer_get_time();
-  for(size_t step = 0;step< nb_steps; step++)
+  for(size_t step = 0;step< NB_STEPS; step++)
   {  
     State_t state_to_fill;
     Actions_t actions_to_fill;
@@ -276,15 +311,15 @@ void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
     start = esp_timer_get_time();
 
     control_step(state_to_fill,actions_to_fill);
-    states[step] = state_to_fill;
-    actions[step] = actions_to_fill;
+    _states[step] = state_to_fill;
+    _actions[step] = actions_to_fill;
 
-    sleep_duration = period - (esp_timer_get_time() - start);
+    sleep_duration = PERIOD - (esp_timer_get_time() - start);
     //ESP_LOGI("Control Loop", "Period: %" PRId64" Start: %" PRId64" Sleep %" PRId64,period,  start, sleep_duration);
     if(sleep_duration>0)
       std::this_thread::sleep_for(std::chrono::microseconds(sleep_duration));   
     else
-      ESP_LOGE("Control Loop"," Error: loop duration: %" PRId64" longer than period: %" PRId64, esp_timer_get_time() - start, period);
+      ESP_LOGE("Control Loop"," Error: loop duration: %" PRId64" longer than period: ", esp_timer_get_time() - start);
   }
   ESP_LOGI("Control Loop", "duration of the loop: %" PRId64, esp_timer_get_time() - start_loop);
  }
