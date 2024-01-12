@@ -1,5 +1,10 @@
 #include "Qutee.hpp"
 #include <inttypes.h>
+
+
+#define VALUE(string) #string
+#define TO_LITERAL(string) VALUE(string)
+
 const int Qutee::DXL_IDs[] = {11, 12, 13, 21, 22, 23,  31, 32, 33, 41, 42, 43};
 
 void Qutee::init(){
@@ -47,7 +52,10 @@ void Qutee::init(){
         }
         _sw_infos.is_info_changed = true;
         
+        //battery_voltage(); not working yet
+
         init_imu();
+
         init_motors();
         tft_init_data_screen();
         go_to_neutral_pose();
@@ -96,10 +104,11 @@ void Qutee::tft_load_screen() {
   this->_tft.setCursor(0, 30);
   this->_tft.setTextColor(ST77XX_GREEN);
   this->_tft.setTextSize(2);
-  this->_tft.println("QuteeV2!");
+  this->_tft.println("Hi! My name is");
+  this->_tft.println(TO_LITERAL(CONFIG_QUTEE_NAME));
   this->_tft.setTextColor(ST77XX_RED);
   this->_tft.println("Loading!");
-
+  delay(1000);
 }
 
 void Qutee::tft_init_data_screen() {
@@ -178,6 +187,22 @@ void Qutee::calibration()
   this->_tft.setTextColor(ST77XX_GREEN);
   this->_tft.setTextSize(4);
     this->_tft.println("CALIBRATION\n DONE! ");
+}
+
+
+void Qutee::battery_voltage()
+{
+  this->_tft.setTextWrap(false);
+  this->_tft.fillScreen(ST77XX_BLACK);
+  this->_tft.setTextColor(ST77XX_BLUE,ST77XX_BLACK); 
+  this->_tft.setTextSize(2);
+
+  while(1){
+    float voltage = _maxlipo.cellVoltage();
+    ESP_LOGI("BATTERY: ","Voltage %f\n",  voltage);
+    this->_tft.setCursor(0, 30);
+    this->_tft.print("Voltage: "); this->_tft.println(voltage);
+  }
 }
 
 

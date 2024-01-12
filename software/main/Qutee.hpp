@@ -18,7 +18,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
-
+#include "Adafruit_MAX1704X.h"
 
 #include "Dynamixel2Arduino.h"
 #include "utility/port_handler.h"
@@ -59,7 +59,7 @@ class Qutee
     const List_State_t& get_list_states(){return _states;}
     void calibration();
     void go_to_neutral_pose();
-    
+    void battery_voltage();
   private:
     void send_actions(const Actions_t& actions);
     void get_motor_positions(State_t& state_ref, size_t offset);
@@ -70,6 +70,7 @@ class Qutee
     void displaySensorStatus(void);
     void tft_init_data_screen();
     void tft_load_screen();
+    
 // ----- Attributes ---- //
     List_State_t _states;
     List_Actions_t _actions;
@@ -83,6 +84,9 @@ class Qutee
     Dynamixel2Arduino _dxl;
     Adafruit_ST7789 _tft;
     Adafruit_BNO055 _bno;
+    Adafruit_MAX17048 _maxlipo;
+
+
 
     // Starting address of the Data to read; Present Position = 132
     static const uint16_t SR_START_ADDR = 132;

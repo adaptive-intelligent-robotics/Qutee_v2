@@ -96,6 +96,7 @@ idf_component_register(SRCS "main.cpp"
                             "../components/Adafruit_Seesaw/seesaw_spectrum.cpp"
                             "../components/Adafruit_Sensor/Adafruit_Sensor.cpp"
                             "../components/Adafruit_BNO055/Adafruit_BNO055.cpp"
+                            "../components/Adafruit_MAX1704X/Adafruit_MAX1704X.cpp"
  
 
                     INCLUDE_DIRS "../components/Dynamixel2Arduino/src/." 
@@ -105,6 +106,7 @@ idf_component_register(SRCS "main.cpp"
                                 "../components/Adafruit_Seesaw/"
                                 "../components/Adafruit_Sensor/"
                                 "../components/Adafruit_BNO055/"
+                                "../components/Adafruit_MAX1704X/"
                  
 
 

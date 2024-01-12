@@ -25,3 +25,6 @@
 [submodule "software/components/arduino-esp32"]
         path = software/components/arduino-esp32
         url = https://github.com/espressif/arduino-esp32.git
+[submodule "software/components/Adafruit_MAX1704X"]
+	path = software/components/Adafruit_MAX1704X
+	url = https://github.com/adafruit/Adafruit_MAX1704X.git
