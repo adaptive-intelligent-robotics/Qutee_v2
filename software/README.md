@@ -39,6 +39,13 @@ python $IDF_PATH/components/esptool_py/esptool/esptool.py -p (PORT) -b 460800 --
 ```
 You have to replace **(PORT)** with the port you want to use, such as `/dev/cu.usbmodem1201`
 
+If you run Docker on Mac, you cannot directly access the USB devices (and thus the Qutee) from Docker. Instead, we can use the esptool python package to flash and monitor the qutee directly from Macos: 
+First install the esptool: `pip install esptool`
+
+Then you can flash using a similar command as above: 
+```
+python -m esptool -p (PORT) -b 460800 --before default_reset --after hard_reset --chip esp32s3  write_flash --flash_mode dio --flash_size 2MB --flash_freq 40m 0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/QuteeV2.bin
+```
 
 
 ## To create new micro-ros messages: 
