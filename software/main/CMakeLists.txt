@@ -111,7 +111,7 @@ idf_component_register(SRCS "main.cpp"
 
 
 
-                    REQUIRES "arduino-esp32" # Library requires Arduino
+                    REQUIRES "arduino" # Library requires Arduino
                              "eigen"
                              "micro_ros_espidf_component"
                              "Adafruit-GFX-Library"
