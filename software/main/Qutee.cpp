@@ -18,7 +18,7 @@ void Qutee::init(){
         int8_t  protocol = 2;       
         _dxl.setPortProtocolVersion((float) protocol);
         ESP_LOGI("DXL: ","PROTOCOL %i", protocol);
-        ESP_LOGI("DXL: ","BAUDRATE %i\n", baud);
+        ESP_LOGI("DXL: ","BAUDRATE %ld\n", baud);
         _dxl.begin(baud);
 
         // Fill the members of structure to syncRead using external user packet buffer
