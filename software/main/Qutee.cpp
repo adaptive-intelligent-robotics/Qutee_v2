@@ -9,57 +9,59 @@ const int Qutee::DXL_IDs[] = {11, 12, 13, 21, 22, 23,  31, 32, 33, 41, 42, 43};
 
 void Qutee::init(){
   
-        //Wire.setPins(GPIO_NUM_3,GPIO_NUM_4);
-        //Wire.begin();
-        init_tft();
-        tft_load_screen();
-        _dxl.setPort(_dxl_port);
-        int32_t baud = 3000000;
-        int8_t  protocol = 2;       
-        _dxl.setPortProtocolVersion((float) protocol);
-        ESP_LOGI("DXL: ","PROTOCOL %i", protocol);
-        ESP_LOGI("DXL: ","BAUDRATE %ld\n", baud);
-        _dxl.begin(baud);
+  //Wire.setPins(GPIO_NUM_3,GPIO_NUM_4);
+  //Wire.begin();
+  init_tft();
+  tft_load_screen();
+  _dxl.setPort(_dxl_port);
+  int32_t baud = 3000000;
+  int8_t  protocol = 2;       
+  _dxl.setPortProtocolVersion((float) protocol);
+  ESP_LOGI("DXL: ","PROTOCOL %i", protocol);
+  ESP_LOGI("DXL: ","BAUDRATE %ld\n", baud);
+  _dxl.begin(baud);
+  
+  // Fill the members of structure to syncRead using external user packet buffer
+  _sr_infos.packet.p_buf = _user_pkt_buf;
+  _sr_infos.packet.buf_capacity = _user_pkt_buf_cap;
+  _sr_infos.packet.is_completed = false;
+  _sr_infos.addr = SR_START_ADDR;
+  _sr_infos.addr_length = SR_ADDR_LEN;
+  _sr_infos.p_xels = _info_xels_sr;
+  _sr_infos.xel_count = 0;  
+  
+  for(int i = 0; i < DXL_ID_CNT; i++){
+    _info_xels_sr[i].id = DXL_IDs[i];
+    _info_xels_sr[i].p_recv_buf = (uint8_t*)&_sr_data[i];
+    _sr_infos.xel_count++;
+  }
+  _sr_infos.is_info_changed = true;
+  
+  // Fill the members of structure to syncWrite using internal packet buffer
+  _sw_infos.packet.p_buf = nullptr;
+  _sw_infos.packet.is_completed = false;
+  _sw_infos.addr = SW_START_ADDR;
+  _sw_infos.addr_length = SW_ADDR_LEN;
+  _sw_infos.p_xels = _info_xels_sw;
+  _sw_infos.xel_count = 0;
+  
+  for(int i = 0; i < DXL_ID_CNT; i++){
+    _info_xels_sw[i].id = DXL_IDs[i];
+    _info_xels_sw[i].p_data = (uint8_t*)&_sw_data[i].goal_position;
+    _sw_infos.xel_count++;
+  }
+  _sw_infos.is_info_changed = true;
+  
+  //battery_voltage(); not working yet
+  
+  init_imu();
+  
+  init_motors();
+  scan();
+  tft_init_data_screen();
+  go_to_neutral_pose();
+}
 
-        // Fill the members of structure to syncRead using external user packet buffer
-        _sr_infos.packet.p_buf = _user_pkt_buf;
-        _sr_infos.packet.buf_capacity = _user_pkt_buf_cap;
-        _sr_infos.packet.is_completed = false;
-        _sr_infos.addr = SR_START_ADDR;
-        _sr_infos.addr_length = SR_ADDR_LEN;
-        _sr_infos.p_xels = _info_xels_sr;
-        _sr_infos.xel_count = 0;  
-
-        for(int i = 0; i < DXL_ID_CNT; i++){
-          _info_xels_sr[i].id = DXL_IDs[i];
-          _info_xels_sr[i].p_recv_buf = (uint8_t*)&_sr_data[i];
-          _sr_infos.xel_count++;
-        }
-        _sr_infos.is_info_changed = true;
-
-        // Fill the members of structure to syncWrite using internal packet buffer
-        _sw_infos.packet.p_buf = nullptr;
-        _sw_infos.packet.is_completed = false;
-        _sw_infos.addr = SW_START_ADDR;
-        _sw_infos.addr_length = SW_ADDR_LEN;
-        _sw_infos.p_xels = _info_xels_sw;
-        _sw_infos.xel_count = 0;
-
-        for(int i = 0; i < DXL_ID_CNT; i++){
-          _info_xels_sw[i].id = DXL_IDs[i];
-          _info_xels_sw[i].p_data = (uint8_t*)&_sw_data[i].goal_position;
-          _sw_infos.xel_count++;
-        }
-        _sw_infos.is_info_changed = true;
-        
-        //battery_voltage(); not working yet
-
-        init_imu();
-
-        init_motors();
-        tft_init_data_screen();
-        go_to_neutral_pose();
-    }
 void Qutee::init_imu(){
 
   Wire.setPins(GPIO_NUM_3,GPIO_NUM_4);
@@ -79,22 +81,22 @@ void Qutee::init_imu(){
   ESP_LOGI("IMU","Setting NDOF mode");
   this->_bno.setMode(OPERATION_MODE_IMUPLUS);
   displaySensorStatus();
-  calibration();
+  //calibration(); // replace by a function to reload calibration data from eeprom
   ESP_LOGI("IMU","IMU DONE.");
     
 }
 
 void Qutee::init_tft(){
-    // turn on backlite 
-    gpio_set_direction((gpio_num_t)TFT_BACKLITE, GPIO_MODE_OUTPUT);
-    gpio_set_level((gpio_num_t)TFT_BACKLITE, 1);
-     // turn on the TFT / I2C power supply
-    gpio_set_direction((gpio_num_t)TFT_I2C_POWER, GPIO_MODE_OUTPUT);
-    gpio_set_level((gpio_num_t)TFT_I2C_POWER, 1);
-
-    delay(10);
-    this->_tft.init(135, 240);
-    this->_tft.setRotation(3);
+  // turn on backlite 
+  gpio_set_direction((gpio_num_t)TFT_BACKLITE, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)TFT_BACKLITE, 1);
+  // turn on the TFT / I2C power supply
+  gpio_set_direction((gpio_num_t)TFT_I2C_POWER, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)TFT_I2C_POWER, 1);
+  
+  delay(10);
+  this->_tft.init(135, 240);
+  this->_tft.setRotation(3);
 
 }
 
@@ -186,7 +188,7 @@ void Qutee::calibration()
   this->_tft.setCursor(0, 30);
   this->_tft.setTextColor(ST77XX_GREEN);
   this->_tft.setTextSize(4);
-    this->_tft.println("CALIBRATION\n DONE! ");
+  this->_tft.println("CALIBRATION\n DONE! ");
 }
 
 
@@ -229,7 +231,7 @@ void Qutee::init_motors()
     this->_dxl.torqueOff(this->DXL_IDs[i]);
     this->_dxl.setOperatingMode(this->DXL_IDs[i], OP_POSITION);
     this->_dxl.torqueOn(this->DXL_IDs[i]);
-
+    ESP_LOGI("DXL: ","TORQUE ON \n" );
     // Limit the maximum velocity in Position Control Mode. Use 0 for Max speed
     this->_dxl.writeControlTableItem(PROFILE_VELOCITY, DXL_IDs[i], 0);
 }
@@ -269,7 +271,7 @@ void Qutee::get_state(State_t& state_ref)
                   {linearAccelData.acceleration.y},
                   {linearAccelData.acceleration.z}});
 
-  this->get_motor_positions(state_ref,9);
+  this->get_motor_positions(state_ref,6);
 
 }
 
@@ -322,7 +324,7 @@ void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
   //this->tft_update_data_screen(_state, pos, 1000.0f / (float) full_period ); // period is in us        
  }
 
- void Qutee::run_episode(){
+void Qutee::run_episode(){
   if(!this->_bno.isFullyCalibrated()) {this->calibration();}
   go_to_neutral_pose();
   std::this_thread::sleep_for(std::chrono::microseconds(1000000));
@@ -348,3 +350,90 @@ void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
   }
   ESP_LOGI("Control Loop", "duration of the loop: %" PRId64, esp_timer_get_time() - start_loop);
  }
+
+
+
+void Qutee::checkup(){
+  this->_tft.fillScreen(ST77XX_BLACK);
+  this->_tft.setTextSize(2);
+  this->_tft.setCursor(0, 0);
+  this->_tft.setTextColor(ST77XX_BLUE);
+  this->_tft.println("CHECKUP");
+  
+  go_to_neutral_pose();
+  std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+  int64_t start, sleep_duration;
+  int64_t start_loop = esp_timer_get_time();
+  State_t state;
+  Actions_t actions;
+  float action_value=0;
+  int32_t step = 0;
+  float er[12];
+  for(size_t i=0;i<12;i++)
+    er[i]=0;
+			
+  
+  while(1)
+  {  
+    start = esp_timer_get_time();
+    this->get_motor_positions(state,6);
+    for(size_t i=0;i<12;i++)
+      er[i]= (step * er[i] + abs(state(6+i,0)-action_value))/(step+1.0f); //compute rolling average of error
+    step++;
+    ESP_LOGI("Checkup", "Average execution error: 11:%f 12:%f 13:%f  21:%f 22:%f 23:%f  31:%f 32:%f 33:%f  41:%f 42:%f 43:%f ", er[0],er[1],er[2],er[3],er[4],er[5],er[6],er[7],er[8],er[9],er[10],er[11]);     
+    //actions.setConstant(sin(esp_timer_get_time() - start_loop));
+    action_value = sin(0.1*6.28*(esp_timer_get_time() - start_loop)/1000000.0f); 
+    actions.setConstant(action_value);
+    this->send_actions(actions); // Sends a sin signal of 0.1Hz. 
+
+    sleep_duration = (PERIOD - (esp_timer_get_time() - start))*30; // increase period duration to let the robot converge
+
+    //ESP_LOGI("Control Loop", "Period: %" PRId64" Start: %" PRId64" Sleep %" PRId64,period,  start, sleep_duration);
+    if(sleep_duration>0)
+      std::this_thread::sleep_for(std::chrono::microseconds(sleep_duration));   
+    else
+      ESP_LOGE("Checkup"," Error: loop duration: %" PRId64" longer than period: ", esp_timer_get_time() - start);
+  }
+  ESP_LOGI("Checkup", "duration of the loop: %" PRId64, esp_timer_get_time() - start_loop);
+ }
+
+
+void Qutee::menu(){
+  this->_tft.setTextWrap(false);
+  this->_tft.fillScreen(ST77XX_BLACK);
+  this->_tft.setTextSize(2);
+
+  this->_tft.setCursor(0, 0);
+  this->_tft.setTextColor(ST77XX_GREEN);
+  this->_tft.println("Start Calibration");
+  
+  this->_tft.setCursor(0, 60);
+  this->_tft.setTextColor(ST77XX_RED);
+  this->_tft.println("Start Checkup");
+
+  this->_tft.setCursor(0, 120);
+  this->_tft.setTextColor(ST77XX_BLUE);
+  this->_tft.println("Start ROS");
+
+  gpio_set_direction(GPIO_NUM_0, GPIO_MODE_INPUT);
+  gpio_set_direction(GPIO_NUM_1, GPIO_MODE_INPUT);
+  gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT);
+  
+  while(1){
+    delay(100);
+    ESP_LOGI("Menu", "D0: %i  D1: %i  D2: %i",     !gpio_get_level(GPIO_NUM_0),    gpio_get_level(GPIO_NUM_1),    gpio_get_level(GPIO_NUM_2));
+    if(!gpio_get_level(GPIO_NUM_0))
+      {
+	this->calibration();
+	return;
+      }
+    if(gpio_get_level(GPIO_NUM_1))
+      this->checkup();
+    if(gpio_get_level(GPIO_NUM_2)){
+      this->_tft.fillScreen(ST77XX_BLACK);
+      return;
+    }
+
+  }
+
+}

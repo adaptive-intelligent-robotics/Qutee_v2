@@ -1,5 +1,7 @@
+// Define the logging level to be verbose
 #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 
+// Include necessary libraries
 #include <esp_log.h>
 #include <math.h>
 #include <hal/misc.h>
@@ -31,6 +33,7 @@
 #include <rmw_microros/rmw_microros.h>
 #endif
 
+// Define macros for checking return codes from RCL functions
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){\
    printf("Failed status on line %d: %d. Message: %s, Aborting.\n",__LINE__,(int)temp_rc, rcl_get_error_string().str);\
   rcutils_reset_error(); return;}}
@@ -41,21 +44,19 @@
 
 
 
-
+// Include Eigen library
 // EIGEN SHOULD BE AT THE END. OTHERWISE, issues with HIGH/LOW macros
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 
 
 
-
-
-
+// Define DOMAIN_ID
 #define DOMAIN_ID 0
 
-
+// Declare Qutee object as global variable
 Qutee robot;
 
-
+// Declare variables for ROS messaging
 static rcl_allocator_t allocator;
 static rclc_support_t support;
 static rclc_executor_t executor;
@@ -72,6 +73,8 @@ static char action_label[7] = "action";
 static char state_label[6] = "state";
 static char weights_label[8] = "weights";
 
+
+// Initialize messages for ROS communication
 void init_messages(qutee_msg__msg__Weights& request, qutee_msg__msg__RolloutRes& response){
     size_t nb_steps = NB_STEPS;
     size_t action_size = NN_OUTPUT_SIZE;
@@ -166,7 +169,7 @@ void init_messages(qutee_msg__msg__Weights& request, qutee_msg__msg__RolloutRes&
     return;
 }
 
-
+// Create response message for ROS communication
 void create_response(qutee_msg__msg__RolloutRes* response)
 {
     ESP_LOGI("ROS: ","Step1");  
@@ -201,7 +204,7 @@ void create_response(qutee_msg__msg__RolloutRes* response)
     return;
 }*/
 
-
+// Callback function for ROS subscriber
 void rollout_callback(const void * msgin)
 {
     ESP_LOGI("ROS: ","Entered the Rollout callback");  
@@ -270,62 +273,63 @@ void rollout_callback(const void * msgin)
 
 
 
-
+// Micro-ROS task function
+// this function init ros node, creates the subscribers and publishers and spins infinitely.
 void micro_ros_task(void * arg)
 {
     allocator = rcl_get_default_allocator();
  
-	// Create init_options.
-	rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
-	RCCHECK(rcl_init_options_init(&init_options, allocator));
-	RCCHECK(rcl_init_options_set_domain_id(&init_options, DOMAIN_ID));
-
+    // Create init_options.
+    rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
+    RCCHECK(rcl_init_options_init(&init_options, allocator));
+    RCCHECK(rcl_init_options_set_domain_id(&init_options, DOMAIN_ID));
+    
 #ifdef CONFIG_MICRO_ROS_ESP_XRCE_DDS_MIDDLEWARE
-	rmw_init_options_t* rmw_options = rcl_init_options_get_rmw_init_options(&init_options);
-
-	// Static Agent IP and port can be used instead of autodisvery.
-	RCCHECK(rmw_uros_options_set_udp_address(CONFIG_MICRO_ROS_AGENT_IP, CONFIG_MICRO_ROS_AGENT_PORT, rmw_options));
-	//RCCHECK(rmw_uros_discover_agent(rmw_options));
+    rmw_init_options_t* rmw_options = rcl_init_options_get_rmw_init_options(&init_options);
+    
+    // Static Agent IP and port can be used instead of autodisvery.
+    RCCHECK(rmw_uros_options_set_udp_address(CONFIG_MICRO_ROS_AGENT_IP, CONFIG_MICRO_ROS_AGENT_PORT, rmw_options));
+    //RCCHECK(rmw_uros_discover_agent(rmw_options));
 #endif
 
-	// Setup support structure.
-	RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
+    // Setup support structure.
+    RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
 
     // create node
     RCCHECK(rclc_node_init_default(&node, "qutee_node", CONFIG_QUTEE_NAME, &support));
 
     init_messages(weights, rollout_res);
     // Create publisher.
-	RCCHECK(rclc_publisher_init_default(
-		&publisher,
-		&node,
-		ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_msg, msg, RolloutRes),
-		"qutee_rollout_results"));
+    RCCHECK(rclc_publisher_init_default(
+					&publisher,
+					&node,
+					ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_msg, msg, RolloutRes),
+					"qutee_rollout_results"));
 
-	// Create subscriber.
+    // Create subscriber.
     subscriber = rcl_get_zero_initialized_subscription();
-	RCCHECK(rclc_subscription_init_default(
-		&subscriber,
-		&node,
-		ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_msg, msg, Weights),
-		"qutee_weights_to_evaluate"));
+    RCCHECK(rclc_subscription_init_default(
+					   &subscriber,
+					   &node,
+					   ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_msg, msg, Weights),
+					   "qutee_weights_to_evaluate"));
 
     
     // Create executor.
-	RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
-	unsigned int rcl_wait_timeout = 1000;   // in ms
-	RCCHECK(rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout)));
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+    unsigned int rcl_wait_timeout = 1000;   // in ms
+    RCCHECK(rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout)));
 
-	// Add timer and subscriber to executor.
-	RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &weights, &rollout_callback, ON_NEW_DATA));
+    // Add timer and subscriber to executor.
+    RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &weights, &rollout_callback, ON_NEW_DATA));
 
     // Spin forever
-	while(1){
-		rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
-		usleep(100000);
-	}
+    while(1){
+      rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+      usleep(100000);
+    }
 
-	// Free resources
+    // Free resources
     //TODO IF YOU NEED TO, Here Qutee is killed when not in use. 
 }
 
@@ -338,19 +342,20 @@ void micro_ros_task(void * arg)
 
 
 
-
-
+// Entry point of the application
 extern "C" void app_main()
 { 
-
+    // Initialize robot and perform calibration
     robot.init();
-    robot.calibration();
-    
+    robot.menu();
+    //robot.calibration();
+
+    // Initialize network interface if needed
     #if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
     ESP_ERROR_CHECK(uros_network_interface_initialize());
     #endif
     
-        
+    // Create task to handle Micro-ROS operations
     //pin micro-ros task in APP_CPU to make PRO_CPU to deal with wifi:
     xTaskCreate(micro_ros_task,
             "uros_task",
