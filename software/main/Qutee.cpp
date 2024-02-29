@@ -71,17 +71,17 @@ void Qutee::init_imu(){
   gpio_set_direction(GPIO_NUM_7, GPIO_MODE_OUTPUT);
   gpio_set_level(GPIO_NUM_7, 1);
   ESP_LOGI("IMU","START IMU PROCESS.");
- if (!this->_bno.begin())
-  {
-        ESP_LOGI("IMU","No BNO055 detected");
-    while (1);
-  }
+  if (!this->_bno.begin())
+    {
+      ESP_LOGI("IMU","No BNO055 detected");
+      while (1);
+    }
   ESP_LOGI("IMU","Init imu Done");
   delay(1000);
   ESP_LOGI("IMU","Setting NDOF mode");
+  this->load_imu_calibration();
   this->_bno.setMode(OPERATION_MODE_IMUPLUS);
   displaySensorStatus();
-  //calibration(); // replace by a function to reload calibration data from eeprom
   ESP_LOGI("IMU","IMU DONE.");
     
 }
@@ -164,6 +164,64 @@ void Qutee::tft_update_data_screen(const State_t& state, const Actions_t& action
  
 }
 
+// function to initialise the non-volatile storage of the qutee. Mostly used to store calibration data. 
+void Qutee::init_NVS(){ 
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( err );
+}
+
+void Qutee::manage_imu_calibration_nvs(uint8_t* calibration_data, size_t size, bool write = false){
+  this->init_NVS();  
+  ESP_LOGI("NVS STORAGE: ","Opening Non-Volatile Storage (NVS) handle... ");
+  nvs_handle_t nvs_handle;
+  esp_err_t err;
+  err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &nvs_handle);
+  
+  if (err != ESP_OK) {
+    ESP_LOGE("NVS STORAGE: ","Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+  } else {
+      ESP_LOGI("NVS STORAGE: ","Done\n");
+      size_t  required_size = size * sizeof(uint8_t);
+      ESP_LOGI("NVS STORAGE: ","handling %d bits.", required_size);
+      if(write){// WRITE
+	// Write value
+	err = nvs_set_blob(nvs_handle, "imu_cal", calibration_data, required_size);
+	if (err != ESP_OK) {ESP_LOGE("NVS STORAGE: ","Write Failed, error: %s",  esp_err_to_name(err)); } else{ESP_LOGI("NVS STORAGE: ","Write Done");}
+	// Commit
+	err = nvs_commit(nvs_handle);
+	if (err != ESP_OK) {ESP_LOGE("NVS STORAGE: ","Commit Failed, error: %s", esp_err_to_name(err)); } else{ESP_LOGI("NVS STORAGE: ","Commit Done"); }
+      }
+      else{ // READ
+	err = nvs_get_blob(nvs_handle, "imu_cal", calibration_data, &required_size);
+	if (err != ESP_OK) {ESP_LOGE("NVS STORAGE: ","Read Failed, error: %s", esp_err_to_name(err)); } else{ESP_LOGI("NVS STORAGE: ","Read Done, read %d bits.", required_size); }
+      }
+      // Close
+      nvs_close(nvs_handle);
+  }  
+}
+
+
+
+void Qutee::load_imu_calibration()
+{
+  uint8_t calibration_data[22];
+  this->_bno.setMode(OPERATION_MODE_CONFIG);
+  this->manage_imu_calibration_nvs(calibration_data, 22, false);// false to READ data
+  this->_bno.setSensorOffsets(calibration_data);
+  this->_bno.setMode(OPERATION_MODE_IMUPLUS);
+  ESP_LOGI("CALIBRATION DATA saved: ","");
+  for(size_t i =0; i<22; i++)
+    ESP_LOGI("","%d : %d", i, calibration_data[i]);
+    
+}
+
 
 void Qutee::calibration()
 {
@@ -189,9 +247,21 @@ void Qutee::calibration()
   this->_tft.setTextColor(ST77XX_GREEN);
   this->_tft.setTextSize(4);
   this->_tft.println("CALIBRATION\n DONE! ");
+  this->_bno.setMode(OPERATION_MODE_CONFIG);
+  uint8_t calibration_data[22];
+  this->_bno.getSensorOffsets(calibration_data);
+  ESP_LOGI("CALIBRATION DATA obtained: ","");
+  for(size_t i =0; i<22; i++)
+    ESP_LOGI("","%d : %d", i, calibration_data[i]);
+
+  this->manage_imu_calibration_nvs(calibration_data, 22, true);// false to READ data
+
+  this->_bno.setMode(OPERATION_MODE_IMUPLUS);
+
+  
 }
 
-
+// THIS DOES NOT WORK WITH THE NIMH BATTERIES THAT ARE USED WITH THE QUTEE.
 void Qutee::battery_voltage()
 {
   this->_tft.setTextWrap(false);
@@ -199,11 +269,21 @@ void Qutee::battery_voltage()
   this->_tft.setTextColor(ST77XX_BLUE,ST77XX_BLACK); 
   this->_tft.setTextSize(2);
 
+  if (!this->_maxlipo.begin()) {
+    ESP_LOGI("BATTERY: ","Couldnt find Adafruit MAX17048?\nMake sure a battery is plugged in!\n");
+    while (1) 
+        std::this_thread::sleep_for(std::chrono::microseconds(100000));
+  }
+  
+  ESP_LOGI("BATTERY: ","Found MAX17048 with Chip ID: %d \n",  this->_maxlipo.getChipID());
+  this->_maxlipo.reset();
+  
   while(1){
-    float voltage = _maxlipo.cellVoltage();
-    ESP_LOGI("BATTERY: ","Voltage %f\n",  voltage);
+    float voltage = this->_maxlipo.cellVoltage();
+    ESP_LOGI("BATTERY: ","Voltage %f ResetV %f, alertstatus %d,  activeAlert %d",  voltage, this->_maxlipo.getResetVoltage(), this->_maxlipo.getAlertStatus(), this->_maxlipo.isActiveAlert());
     this->_tft.setCursor(0, 30);
     this->_tft.print("Voltage: "); this->_tft.println(voltage);
+    std::this_thread::sleep_for(std::chrono::microseconds(100000));
   }
 }
 
@@ -234,7 +314,24 @@ void Qutee::init_motors()
     ESP_LOGI("DXL: ","TORQUE ON \n" );
     // Limit the maximum velocity in Position Control Mode. Use 0 for Max speed
     this->_dxl.writeControlTableItem(PROFILE_VELOCITY, DXL_IDs[i], 0);
+    this->set_PID_gains();
+  }
 }
+
+void Qutee::set_PID_gains()
+{
+  // adjust these values depending on how your robot behaves. 0.05 looks like a good target to have on all motors during checkup. 
+  uint16_t position_p_gain = 1600;
+  uint16_t position_i_gain = 0;
+  uint16_t position_d_gain = 40;
+  // Set Position PID Gains
+  for(size_t i = 0; i<12; i++)
+  {
+    this->_dxl.writeControlTableItem(POSITION_P_GAIN, this->DXL_IDs[i], position_p_gain);
+    this->_dxl.writeControlTableItem(POSITION_I_GAIN, this->DXL_IDs[i], position_i_gain);
+    this->_dxl.writeControlTableItem(POSITION_D_GAIN, this->DXL_IDs[i], position_d_gain);
+  }
+  return;
 }
 
 void Qutee::go_to_neutral_pose()
@@ -279,7 +376,7 @@ void Qutee::send_actions(const Actions_t& actions){
   uint8_t i;
   // Insert a new Goal Position to the SyncWrite Packet
   for(i = 0; i < this->DXL_ID_CNT; i++){
-    this->_sw_data[i].goal_position = (size_t) 2048+actions(i,0)*256;
+    this->_sw_data[i].goal_position = (size_t) 2048+actions(i,0)*512;
   }
 
   // Update the SyncWrite packet status
@@ -303,7 +400,7 @@ void Qutee::get_motor_positions(State_t& state_ref, size_t offset)
   if(recv_cnt > 0) {
     //ESP_LOGI("Control Loop","[SyncRead] Success, Received ID Count: %i ",recv_cnt);
     for(i = 0; i<recv_cnt; i++){
-      state_ref(i+offset,0)= (this->_sr_data[i].present_position-2048.0f)/256.0f;
+      state_ref(i+offset,0)= (this->_sr_data[i].present_position-2048.0f)/512.0f;
       //ESP_LOGI("Control Loop","  ID: %i, \t Present Position: %i",this->_sr_infos.p_xels[i].id), this->_sr_data[i].present_position);
     }
   }else{
@@ -372,21 +469,28 @@ void Qutee::checkup(){
   for(size_t i=0;i<12;i++)
     er[i]=0;
 			
+  this->tft_init_checkup_screen();
   
   while(1)
   {  
     start = esp_timer_get_time();
     this->get_motor_positions(state,6);
+
+    if(step % (2 * CONFIG_CONTROL_FREQUENCY)==0)
+      this->tft_update_checkup_screen(er);
+
     for(size_t i=0;i<12;i++)
       er[i]= (step * er[i] + abs(state(6+i,0)-action_value))/(step+1.0f); //compute rolling average of error
+
     step++;
-    ESP_LOGI("Checkup", "Average execution error: 11:%f 12:%f 13:%f  21:%f 22:%f 23:%f  31:%f 32:%f 33:%f  41:%f 42:%f 43:%f ", er[0],er[1],er[2],er[3],er[4],er[5],er[6],er[7],er[8],er[9],er[10],er[11]);     
-    //actions.setConstant(sin(esp_timer_get_time() - start_loop));
-    action_value = sin(0.1*6.28*(esp_timer_get_time() - start_loop)/1000000.0f); 
+
+    //ESP_LOGI("Checkup", "Average execution error: 11:%f 12:%f 13:%f  21:%f 22:%f 23:%f  31:%f 32:%f 33:%f  41:%f 42:%f 43:%f ", er[0],er[1],er[2],er[3],er[4],er[5],er[6],er[7],er[8],er[9],er[10],er[11]);
+
+    action_value = sin(0.5*6.28*(esp_timer_get_time() - start_loop)/1000000.0f); 
     actions.setConstant(action_value);
     this->send_actions(actions); // Sends a sin signal of 0.1Hz. 
 
-    sleep_duration = (PERIOD - (esp_timer_get_time() - start))*30; // increase period duration to let the robot converge
+    sleep_duration = (PERIOD - (esp_timer_get_time() - start)); 
 
     //ESP_LOGI("Control Loop", "Period: %" PRId64" Start: %" PRId64" Sleep %" PRId64,period,  start, sleep_duration);
     if(sleep_duration>0)
@@ -397,35 +501,81 @@ void Qutee::checkup(){
   ESP_LOGI("Checkup", "duration of the loop: %" PRId64, esp_timer_get_time() - start_loop);
  }
 
+void Qutee::tft_init_checkup_screen() {
+  int lo = 10; // line offset
+  int io = 32; // item offset
+  this->_tft.fillScreen(ST77XX_BLACK);
+  this->_tft.setCursor(0, 0);
+  this->_tft.setTextColor(ST77XX_GREEN,ST77XX_BLACK);
+  this->_tft.setTextSize(1);
+  this->_tft.setCursor(0, 0);    this->_tft.setTextColor(ST77XX_RED,ST77XX_BLACK);    this->_tft.println("Error: ");
+
+  this->_tft.setTextColor(ST77XX_BLUE,ST77XX_BLACK); 
+  this->_tft.setCursor(0*io, 1*lo); this->_tft.print("11: ");  this->_tft.setCursor(2*io, 1*lo);  this->_tft.print(" 12: "); this->_tft.setCursor(4*io, 1*lo);  this->_tft.print(" 13: "); 
+  this->_tft.setCursor(0*io, 2*lo); this->_tft.print("21: ");  this->_tft.setCursor(2*io, 2*lo);  this->_tft.print(" 22: "); this->_tft.setCursor(4*io, 2*lo);  this->_tft.print(" 23: "); 
+  this->_tft.setCursor(0*io, 3*lo); this->_tft.print("31: ");  this->_tft.setCursor(2*io, 3*lo);  this->_tft.print(" 32: "); this->_tft.setCursor(4*io, 3*lo);  this->_tft.print(" 33: "); 
+  this->_tft.setCursor(0*io, 4*lo); this->_tft.print("41: ");  this->_tft.setCursor(2*io, 4*lo);  this->_tft.print(" 42: "); this->_tft.setCursor(4*io, 4*lo);  this->_tft.print(" 43: "); 
+}
+
+void Qutee::tft_update_checkup_screen(const float* err) {
+  int lo = 10; // line offset
+  int io = 32; // item offset
+  char buf[6]; // 5 characters + NUL
+  this->_tft.setTextSize(1);
+  this->_tft.setTextColor(ST77XX_WHITE,ST77XX_BLACK); 
+  this->_tft.setCursor(200 , 0);   this->_tft.setTextColor(ST77XX_WHITE,ST77XX_BLACK); this->_tft.print(buf);
+
+  this->_tft.setTextSize(1);
+  // State
+  for(size_t i=0; i < 12; i++){
+    if(err[i]>0.1)
+      this->_tft.setTextColor(ST77XX_RED,ST77XX_BLACK);
+    else
+      this->_tft.setTextColor(ST77XX_WHITE,ST77XX_BLACK);
+    sprintf(buf, "%- 1.2f",err[i] );
+    this->_tft.setCursor( ((i%3) *2 +1)*io, (i/3 + 1)*lo); this->_tft.print(buf); 
+  }
+ 
+}
+
+
+
+
 
 void Qutee::menu(){
-  this->_tft.setTextWrap(false);
-  this->_tft.fillScreen(ST77XX_BLACK);
-  this->_tft.setTextSize(2);
-
-  this->_tft.setCursor(0, 0);
-  this->_tft.setTextColor(ST77XX_GREEN);
-  this->_tft.println("Start Calibration");
-  
-  this->_tft.setCursor(0, 60);
-  this->_tft.setTextColor(ST77XX_RED);
-  this->_tft.println("Start Checkup");
-
-  this->_tft.setCursor(0, 120);
-  this->_tft.setTextColor(ST77XX_BLUE);
-  this->_tft.println("Start ROS");
-
+  bool screen_on = false;
   gpio_set_direction(GPIO_NUM_0, GPIO_MODE_INPUT);
   gpio_set_direction(GPIO_NUM_1, GPIO_MODE_INPUT);
   gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT);
-  
+
   while(1){
+    if(!screen_on){
+      screen_on=true;
+      this->_tft.setTextWrap(false);
+      this->_tft.fillScreen(ST77XX_BLACK);
+      this->_tft.setTextSize(2);
+      
+      this->_tft.setCursor(0, 0);
+      this->_tft.setTextColor(ST77XX_GREEN);
+      this->_tft.println("Start Calibration");
+      
+      this->_tft.setCursor(0, 60);
+      this->_tft.setTextColor(ST77XX_RED);
+      this->_tft.println("Start Checkup");
+      
+      this->_tft.setCursor(0, 120);
+      this->_tft.setTextColor(ST77XX_BLUE);
+      this->_tft.println("Start ROS");
+
+      ESP_LOGI("Menu", "Entering menu. Waiting for a button to be pressed");
+    }
+
+    
     delay(100);
-    ESP_LOGI("Menu", "D0: %i  D1: %i  D2: %i",     !gpio_get_level(GPIO_NUM_0),    gpio_get_level(GPIO_NUM_1),    gpio_get_level(GPIO_NUM_2));
     if(!gpio_get_level(GPIO_NUM_0))
       {
 	this->calibration();
-	return;
+	screen_on=false; // set to false, to replot the screen when leaving calibration
       }
     if(gpio_get_level(GPIO_NUM_1))
       this->checkup();

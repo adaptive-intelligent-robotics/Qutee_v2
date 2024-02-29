@@ -12,6 +12,10 @@
 #undef HIGH // undef macro from adruino lib
 #undef LOW // undef macro from arduino lib
 
+#include "nvs_flash.h"
+#include "nvs.h"
+#define STORAGE_NAMESPACE "storage"
+
 #include "arduino.h"
 #include <Wire.h>
 
@@ -68,12 +72,17 @@ private:
   void get_motor_positions(State_t& state_ref, size_t offset);
   void get_state(State_t& state_ref);
   void init_motors();
+  void set_PID_gains();
   void init_imu();
   void init_tft();
   void displaySensorStatus(void);
   void tft_init_data_screen();
   void tft_load_screen();
-  
+  void tft_init_checkup_screen();
+  void tft_update_checkup_screen(const float* err);
+  void init_NVS();
+  void manage_imu_calibration_nvs(uint8_t* calibration_data, size_t size, bool write);
+  void load_imu_calibration();
   // ----- Attributes ---- //
   List_State_t _states;
   List_Actions_t _actions;
