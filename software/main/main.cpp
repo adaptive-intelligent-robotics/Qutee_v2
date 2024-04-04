@@ -283,9 +283,12 @@ void status_callback(const void * req, void * res){
   qutee_interface__srv__Status_Request * req_in = (qutee_interface__srv__Status_Request *) req;
   qutee_interface__srv__Status_Response * res_in = (qutee_interface__srv__Status_Response *) res;
 
-  printf("Service request value: %d.\n", (int) req_in->data);
-
-  res_in->success = req_in->data;
+  printf("Service Status request received");
+  
+  res_in->battery = robot.battery_voltage();
+  res_in->number_weights = robot.get_policy().get_number_weights();
+  //res_in->error_message // could be useful later.
+  
 }
 
 
