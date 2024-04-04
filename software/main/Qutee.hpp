@@ -63,7 +63,7 @@ public:
   const List_State_t& get_list_states(){return _states;}
   void calibration();
   void go_to_neutral_pose();
-  void battery_voltage();
+  float battery_voltage();
   
   void checkup();
   void menu();
@@ -83,6 +83,7 @@ private:
   void init_NVS();
   void manage_imu_calibration_nvs(uint8_t* calibration_data, size_t size, bool write);
   void load_imu_calibration();
+  void print_state();
   // ----- Attributes ---- //
   List_State_t _states;
   List_Actions_t _actions;

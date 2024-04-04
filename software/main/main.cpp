@@ -211,17 +211,19 @@ void rollout_callback(const void * msgin)
     qutee_msg__msg__Weights * weights_msg = (qutee_msg__msg__Weights *) msgin; 
     
     ESP_LOGI("ROS: ","First Weight: %f last Weight: %f", *weights_msg->weights.data.data,*(weights_msg->weights.data.data+weights_msg->weights.data.size-1 )); 
-    ESP_LOGI("ROS: ","INIT First Weight: %f last Weight: %f", *robot.get_policy().get_weights().data(),*(robot.get_policy().get_weights().data() + 321));     
+    ESP_LOGI("ROS: ","INIT First Weight: %f last Weight: %f", *robot.get_policy().get_weights().data(),*(robot.get_policy().get_weights().data() + 321));
+    // Copy weight to the robot's policy
     std::copy(weights_msg->weights.data.data, weights_msg->weights.data.data+weights_msg->weights.data.size, robot.get_policy().get_weights().data());    
     ESP_LOGI("ROS: ","AFTER First Weight: %f last Weight: %f", *robot.get_policy().get_weights().data(),*(robot.get_policy().get_weights().data() + 321));    
 
-
+    // Run the episode
     uint32_t begin_time = esp_log_timestamp();
     robot.run_episode();
 
     uint32_t duration = esp_log_timestamp() - begin_time;
     ESP_LOGI("Control Loop","\tTimings: FREQ: %f", (float) CONFIG_EPISODE_DURATION * 1000.0f / (float) duration);
 
+    // Send the transitions
     create_response(&rollout_res);
     RCSOFTCHECK(rcl_publish(&publisher, &rollout_res, NULL));
     ESP_LOGI("Control Loop","DONE");
@@ -348,7 +350,7 @@ extern "C" void app_main()
     // Initialize robot and perform calibration
     robot.init();
     robot.menu();
-    //robot.calibration();
+    // if the user selects "launch ros" in the menu, the menu returns here. 
 
     // Initialize network interface if needed
     #if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)

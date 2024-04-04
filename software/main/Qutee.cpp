@@ -52,9 +52,17 @@ void Qutee::init(){
   }
   _sw_infos.is_info_changed = true;
   
-  //battery_voltage(); not working yet
-  
   init_imu();
+
+  // init battery monitor
+  if (!this->_maxlipo.begin()) {
+    ESP_LOGI("BATTERY: ","Couldnt find Adafruit MAX17048?\nMake sure a battery is plugged in!\n");
+    while (1) 
+        std::this_thread::sleep_for(std::chrono::microseconds(100000));
+  }
+  
+  ESP_LOGI("BATTERY: ","Found MAX17048 with Chip ID: %d \n",  this->_maxlipo.getChipID());
+  this->_maxlipo.reset();
   
   init_motors();
   scan();
@@ -211,15 +219,19 @@ void Qutee::manage_imu_calibration_nvs(uint8_t* calibration_data, size_t size, b
 
 void Qutee::load_imu_calibration()
 {
-  uint8_t calibration_data[22];
-  this->_bno.setMode(OPERATION_MODE_CONFIG);
-  this->manage_imu_calibration_nvs(calibration_data, 22, false);// false to READ data
-  this->_bno.setSensorOffsets(calibration_data);
-  this->_bno.setMode(OPERATION_MODE_IMUPLUS);
-  ESP_LOGI("CALIBRATION DATA saved: ","");
-  for(size_t i =0; i<22; i++)
-    ESP_LOGI("","%d : %d", i, calibration_data[i]);
-    
+  uint8_t calibration_data[23]; // adding one value to be set to 42 as sanity check. If loaded value is not 42, this means that data were not properly saved. 
+  this->manage_imu_calibration_nvs(calibration_data, 23, false);// false to READ data
+  if(calibration_data[22] == 42) // proper value loaded
+    {
+      ESP_LOGI("CALIBRATION DATA: "," successfully loaded saved values");
+      this->_bno.setSensorOffsets(calibration_data);
+
+      ESP_LOGI("CALIBRATION DATA saved: ","");
+      for(size_t i =0; i<23; i++)
+	ESP_LOGI("","%d : %d", i, calibration_data[i]);
+    }
+  else
+    ESP_LOGI("CALIBRATION DATA: ","no existing calibration data. Calibration is required");
 }
 
 
@@ -231,60 +243,63 @@ void Qutee::calibration()
   this->_tft.setTextWrap(false);
   this->_tft.fillScreen(ST77XX_BLACK);
   this->_tft.setTextColor(ST77XX_BLUE,ST77XX_BLACK); 
-  this->_tft.setTextSize(2);
-
-  while(!this->_bno.isFullyCalibrated()){
+  this->_tft.setTextSize(1);
+  
+  uint8_t count =0;
+  sensors_event_t  linearAccelData;
+  float accel_amp;
+  while(count<10){ // wait for being fullycalibrated and with low acceleration (i.e., learned to remove gravity) for 10 consecutive steps, i.e., one seconds.
+    this->_bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+    accel_amp = linearAccelData.acceleration.x*linearAccelData.acceleration.x + linearAccelData.acceleration.y*linearAccelData.acceleration.y + linearAccelData.acceleration.z*linearAccelData.acceleration.z;
+    
+    if(this->_bno.isFullyCalibrated() && accel_amp<0.01)
+      count++;
+    else
+      count=0;
     this->_bno.getCalibration(&system, &gyro, &accel, &mag);
-    ESP_LOGI("CALIBRATION: ","system %i, gyro %i, accel %i, mag %i\n",  system , gyro ,accel, mag);
-    this->_tft.setCursor(0, 30);
+    ESP_LOGI("CALIBRATION: ","system %i, gyro %i, accel %i, mag %i, accel_amp %f\n",  system , gyro ,accel, mag, accel_amp);
+    this->_tft.setCursor(0, 20);
     this->_tft.print("system: "); this->_tft.println(system);
     this->_tft.print("gyro: "); this->_tft.println(gyro);
     this->_tft.print("accel: "); this->_tft.println(accel);
     this->_tft.print("mag: "); this->_tft.println(mag);
+    this->_tft.print("Accel amplitude: "); this->_tft.println(accel_amp);
+    this->_tft.print("x: "); this->_tft.print(linearAccelData.acceleration.x);
+    this->_tft.print("y: "); this->_tft.print(linearAccelData.acceleration.y);
+    this->_tft.print("z: "); this->_tft.print(linearAccelData.acceleration.z);
+    std::this_thread::sleep_for(std::chrono::microseconds(100000));
   }
   this->_tft.fillScreen(ST77XX_BLACK);
   this->_tft.setCursor(0, 30);
   this->_tft.setTextColor(ST77XX_GREEN);
   this->_tft.setTextSize(4);
   this->_tft.println("CALIBRATION\n DONE! ");
-  this->_bno.setMode(OPERATION_MODE_CONFIG);
-  uint8_t calibration_data[22];
-  this->_bno.getSensorOffsets(calibration_data);
-  ESP_LOGI("CALIBRATION DATA obtained: ","");
-  for(size_t i =0; i<22; i++)
-    ESP_LOGI("","%d : %d", i, calibration_data[i]);
 
-  this->manage_imu_calibration_nvs(calibration_data, 22, true);// false to READ data
-
+  uint8_t calibration_data[23]; // adding one value to be set to 42 as sanity check. If loaded value is not 42, this means that data were not properly saved.
+  if(this->_bno.getSensorOffsets(calibration_data)){
+    calibration_data[22]=42; 
+    ESP_LOGI("CALIBRATION DATA obtained: ","");
+    for(size_t i =0; i<23; i++)
+      ESP_LOGI("","%d : %d", i, calibration_data[i]);
+    this->manage_imu_calibration_nvs(calibration_data, 23, true);// false to READ data
+  }
+  else
+    ESP_LOGE("CALIBRATION: "," ERROR FAILED TO GET CALIBRATION PROFILE");
   this->_bno.setMode(OPERATION_MODE_IMUPLUS);
 
   
 }
 
-// THIS DOES NOT WORK WITH THE NIMH BATTERIES THAT ARE USED WITH THE QUTEE.
-void Qutee::battery_voltage()
+// Return the battery's voltage. Given that we use NIMH batteries, the voltage can exceed 5.14V, which is the maximum value that the battery monitor can report. When this happens, the monitor return unexpectedly low values (e.g., 0.01V, or 2.1V). Therefore, this function return 5.15V when the measured value is below 3.5V. 
+float Qutee::battery_voltage()
 {
-  this->_tft.setTextWrap(false);
-  this->_tft.fillScreen(ST77XX_BLACK);
-  this->_tft.setTextColor(ST77XX_BLUE,ST77XX_BLACK); 
-  this->_tft.setTextSize(2);
-
-  if (!this->_maxlipo.begin()) {
-    ESP_LOGI("BATTERY: ","Couldnt find Adafruit MAX17048?\nMake sure a battery is plugged in!\n");
-    while (1) 
-        std::this_thread::sleep_for(std::chrono::microseconds(100000));
-  }
-  
-  ESP_LOGI("BATTERY: ","Found MAX17048 with Chip ID: %d \n",  this->_maxlipo.getChipID());
-  this->_maxlipo.reset();
-  
-  while(1){
-    float voltage = this->_maxlipo.cellVoltage();
-    ESP_LOGI("BATTERY: ","Voltage %f ResetV %f, alertstatus %d,  activeAlert %d",  voltage, this->_maxlipo.getResetVoltage(), this->_maxlipo.getAlertStatus(), this->_maxlipo.isActiveAlert());
-    this->_tft.setCursor(0, 30);
-    this->_tft.print("Voltage: "); this->_tft.println(voltage);
-    std::this_thread::sleep_for(std::chrono::microseconds(100000));
-  }
+  float voltage = this->_maxlipo.cellVoltage();
+  if (voltage<3.5)
+    {
+      voltage = 5.15;
+      ESP_LOGW("BATTERY: ","measured voltage unexpectedly low. We assume that it means that the battery's voltage is higher than 5.14V. Returning 5.15V instead. ");
+    }
+  return voltage;  
 }
 
 
@@ -539,6 +554,30 @@ void Qutee::tft_update_checkup_screen(const float* err) {
 }
 
 
+void Qutee::print_state(){
+  State_t state;
+  uint16_t BNO055_SAMPLERATE_DELAY_MS = 10; //how often to read data from the board (Taken from the lib example, probably wrong)
+  //velocity = accel*dt (dt in seconds)
+  //position = 0.5*accel*dt^2
+  double ACCEL_VEL_TRANSITION =  (double)(BNO055_SAMPLERATE_DELAY_MS) / 1000.0;
+  double ACCEL_POS_TRANSITION = 0.5 * ACCEL_VEL_TRANSITION * ACCEL_VEL_TRANSITION;
+  double xPos = 0, yPos = 0;
+
+  int64_t start = esp_timer_get_time();
+
+  while(1){
+    this->get_state(state);
+    double delta_t = (esp_timer_get_time() - start) /1000000.0;
+    start = esp_timer_get_time();
+    xPos = xPos + 0.5*delta_t*delta_t * state(3,0);
+    yPos = yPos + 0.5*delta_t*delta_t * state(4,0);
+
+
+    printf("%f, %f, %f, %f, %f, %f, %f, %f\n", state(0,0),state(1,0),state(2,0),state(3,0),state(4,0),state(5,0), xPos, yPos);
+    //ESP_LOGI("STATE", "a: %f, b: %f, c: %f, x: %f, y: %f, z: %f", state(0,0),state(1,0),state(2,0),state(3,0),state(4,0),state(5,0));
+  }
+}
+
 
 
 
@@ -578,9 +617,9 @@ void Qutee::menu(){
 	screen_on=false; // set to false, to replot the screen when leaving calibration
       }
     if(gpio_get_level(GPIO_NUM_1))
-      this->checkup();
+      this->checkup(); // start checkup infinite loop
     if(gpio_get_level(GPIO_NUM_2)){
-      this->_tft.fillScreen(ST77XX_BLACK);
+      this->_tft.fillScreen(ST77XX_BLACK); // clear menu before returning to the main function, where we launch ros and co.
       return;
     }
 
