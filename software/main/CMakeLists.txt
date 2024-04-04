@@ -53,7 +53,7 @@ message([AUTHOR_WARNING] "BLA BLA include: ${IDF_INCLUDES}")
 execute_process(
     WORKING_DIRECTORY ${COMPONENT_DIR}
     COMMAND
-        ${submake} -j -f libquteemsg.mk 
+        ${submake} -j -f libquteeinterface.mk 
                 X_CC=${CMAKE_C_COMPILER}
                 X_AR=${CMAKE_AR}
                 X_STRIP=${CMAKE_STRIP}
@@ -121,11 +121,11 @@ idf_component_register(SRCS "main.cpp"
 set_target_properties(${COMPONENT_LIB} PROPERTIES COMPILE_FLAGS "-Wno-maybe-uninitialized -Wimplicit-function-declaration -fpermissive")
 
 
-add_prebuilt_library(libquteemsg ""
+add_prebuilt_library(libquteeinterface ""
                         REQUIRES micro_ros_espidf_component)
 
-set_target_properties(libquteemsg PROPERTIES IMPORTED_LOCATION ${COMPONENT_DIR}/libquteemsg.a)
-target_include_directories(libquteemsg INTERFACE ${COMPONENT_DIR}/include)
+set_target_properties(libquteeinterface PROPERTIES IMPORTED_LOCATION ${COMPONENT_DIR}/libquteeinterface.a)
+target_include_directories(libquteeinterface INTERFACE ${COMPONENT_DIR}/include)
 
 
 
@@ -135,19 +135,19 @@ foreach(include_folder ${include_folders})
     message([AUTHOR_WARNING] "${include_folder}")
     if(IS_DIRECTORY ${include_folder})
         get_filename_component(folder_name ${include_folder} NAME)
-        target_include_directories(libquteemsg INTERFACE ${COMPONENT_DIR}/include/${folder_name})
+        target_include_directories(libquteeinterface INTERFACE ${COMPONENT_DIR}/include/${folder_name})
         target_include_directories(${COMPONENT_LIB} PRIVATE ${COMPONENT_DIR}/include/${folder_name}) # I don't get why this is not directly propagated to COMPONENT_LIB when I target_link_libraries, so doing it manually, even if ugly.
     endif()
 endforeach()
 
-add_dependencies(${COMPONENT_LIB} libquteemsg)
-target_link_libraries(${COMPONENT_LIB} libquteemsg)
+add_dependencies(${COMPONENT_LIB} libquteeinterface)
+target_link_libraries(${COMPONENT_LIB} libquteeinterface)
 
 include(CMakePrintHelpers)
-cmake_print_properties(TARGETS libquteemsg ${COMPONENT_LIB} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES INCLUDE_DIRECTORIES)
+cmake_print_properties(TARGETS libquteeinterface ${COMPONENT_LIB} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES INCLUDE_DIRECTORIES)
 
 set_directory_properties( PROPERTIES ADDITIONAL_CLEAN_FILES
     "${COMPONENT_DIR}/include;${COMPONENT_DIR}/install;${COMPONENT_DIR}/log;" )
 
-add_custom_target(clean-quteemsg COMMAND ${submake} -f libquteemsg.mk clean
+add_custom_target(clean-quteeinterface COMMAND ${submake} -f libquteeinterface.mk clean
                             WORKING_DIRECTORY ${COMPONENT_DIR})

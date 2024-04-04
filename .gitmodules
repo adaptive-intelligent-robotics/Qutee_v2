@@ -31,3 +31,6 @@
 [submodule "software/components/arduino"]
 	path = software/components/arduino
 	url = https://github.com/espressif/arduino-esp32.git
+[submodule "software/main/src/Qutee_interface"]
+	path = software/main/src/Qutee_interface
+	url = https://github.com/adaptive-intelligent-robotics/Qutee_interface.git

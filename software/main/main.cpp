@@ -24,10 +24,14 @@
 //#include <sensor_msgs/msg/imu.h>
 #include <std_msgs/msg/float32_multi_array.h>
 #include <std_msgs/msg/float32.h>
-#include "qutee_msg/msg/rollout_res.h"
-#include "qutee_msg/msg/weights.h"
+#include "qutee_interface/msg/rollout_res.h"
+#include "qutee_interface/msg/weights.h"
+#include "qutee_interface/srv/status.h"
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
+
+//#include <std_srvs/srv/set_bool.h>
+//#include "example_interfaces/srv/add_two_ints.h" // for tests with services
 
 #ifdef CONFIG_MICRO_ROS_ESP_XRCE_DDS_MIDDLEWARE
 #include <rmw_microros/rmw_microros.h>
@@ -66,8 +70,8 @@ static rcl_subscription_t subscriber;
 
 static rcl_node_t node;
 
-qutee_msg__msg__RolloutRes rollout_res;
-qutee_msg__msg__Weights weights;
+qutee_interface__msg__RolloutRes rollout_res;
+qutee_interface__msg__Weights weights;
 static char time_label[5] = "time";
 static char action_label[7] = "action";
 static char state_label[6] = "state";
@@ -75,7 +79,7 @@ static char weights_label[8] = "weights";
 
 
 // Initialize messages for ROS communication
-void init_messages(qutee_msg__msg__Weights& request, qutee_msg__msg__RolloutRes& response){
+void init_messages(qutee_interface__msg__Weights& request, qutee_interface__msg__RolloutRes& response){
     size_t nb_steps = NB_STEPS;
     size_t action_size = NN_OUTPUT_SIZE;
     size_t state_size = NN_INPUT_SIZE;
@@ -170,7 +174,7 @@ void init_messages(qutee_msg__msg__Weights& request, qutee_msg__msg__RolloutRes&
 }
 
 // Create response message for ROS communication
-void create_response(qutee_msg__msg__RolloutRes* response)
+void create_response(qutee_interface__msg__RolloutRes* response)
 {
     ESP_LOGI("ROS: ","Step1");  
     size_t action_size = NN_OUTPUT_SIZE;
@@ -196,8 +200,8 @@ void create_response(qutee_msg__msg__RolloutRes* response)
 /*void get_num_params_callback(const void * req, void * res)
 {
     ESP_LOGI("ROS: ","Entered the num_params callback");  
-    qutee_msg__srv__GetNumParams_Request * req_in = (qutee_msg__srv__GetNumParams_Request *) req; // This should be empty
-    qutee_msg__srv__GetNumParams_Response * res_in = (qutee_msg__srv__GetNumParams_Response *) res;
+    qutee_interface__srv__GetNumParams_Request * req_in = (qutee_interface__srv__GetNumParams_Request *) req; // This should be empty
+    qutee_interface__srv__GetNumParams_Response * res_in = (qutee_interface__srv__GetNumParams_Response *) res;
 
     res_in->num_params=robot.get_policy().get_number_weights();
 
@@ -208,7 +212,7 @@ void create_response(qutee_msg__msg__RolloutRes* response)
 void rollout_callback(const void * msgin)
 {
     ESP_LOGI("ROS: ","Entered the Rollout callback");  
-    qutee_msg__msg__Weights * weights_msg = (qutee_msg__msg__Weights *) msgin; 
+    qutee_interface__msg__Weights * weights_msg = (qutee_interface__msg__Weights *) msgin; 
     
     ESP_LOGI("ROS: ","First Weight: %f last Weight: %f", *weights_msg->weights.data.data,*(weights_msg->weights.data.data+weights_msg->weights.data.size-1 )); 
     ESP_LOGI("ROS: ","INIT First Weight: %f last Weight: %f", *robot.get_policy().get_weights().data(),*(robot.get_policy().get_weights().data() + 321));
@@ -274,6 +278,18 @@ void rollout_callback(const void * msgin)
 }*/
 
 
+void status_callback(const void * req, void * res){
+
+  qutee_interface__srv__Status_Request * req_in = (qutee_interface__srv__Status_Request *) req;
+  qutee_interface__srv__Status_Response * res_in = (qutee_interface__srv__Status_Response *) res;
+
+  printf("Service request value: %d.\n", (int) req_in->data);
+
+  res_in->success = req_in->data;
+}
+
+
+
 
 // Micro-ROS task function
 // this function init ros node, creates the subscribers and publishers and spins infinitely.
@@ -301,11 +317,27 @@ void micro_ros_task(void * arg)
     RCCHECK(rclc_node_init_default(&node, "qutee_node", CONFIG_QUTEE_NAME, &support));
 
     init_messages(weights, rollout_res);
+
+
+    // Create service
+    rcl_service_t service;
+    RCCHECK(rclc_service_init_default(&service, &node, ROSIDL_GET_SRV_TYPE_SUPPORT(qutee_interface, srv, Status), "/status"));
+
+    // create executor
+    rclc_executor_t executor;
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+
+    qutee_interface__srv__Status_Response res;
+    qutee_interface__srv__Status_Request req;
+    RCCHECK(rclc_executor_add_service(&executor, &service, &req, &res, status_callback));
+
+
+    /*
     // Create publisher.
     RCCHECK(rclc_publisher_init_default(
 					&publisher,
 					&node,
-					ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_msg, msg, RolloutRes),
+					ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_interface, msg, RolloutRes),
 					"qutee_rollout_results"));
 
     // Create subscriber.
@@ -313,7 +345,7 @@ void micro_ros_task(void * arg)
     RCCHECK(rclc_subscription_init_default(
 					   &subscriber,
 					   &node,
-					   ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_msg, msg, Weights),
+					   ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_interface, msg, Weights),
 					   "qutee_weights_to_evaluate"));
 
     
@@ -321,10 +353,11 @@ void micro_ros_task(void * arg)
     RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
     unsigned int rcl_wait_timeout = 1000;   // in ms
     RCCHECK(rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout)));
-
+    
     // Add timer and subscriber to executor.
     RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &weights, &rollout_callback, ON_NEW_DATA));
-
+    */
+    
     // Spin forever
     while(1){
       rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));

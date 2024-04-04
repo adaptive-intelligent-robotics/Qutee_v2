@@ -15,10 +15,10 @@ endif
 CFLAGS_INTERNAL := $(X_CFLAGS) -ffunction-sections -fdata-sections
 CXXFLAGS_INTERNAL := $(X_CXXFLAGS) -ffunction-sections -fdata-sections
 
-all: $(QUTEE_DIR)/libquteemsg.a
+all: $(QUTEE_DIR)/libquteeinterface.a
 
 clean:
-	rm -rf $(QUTEE_DIR)/libquteemsg.a; \
+	rm -rf $(QUTEE_DIR)/libquteeinterface.a; \
 	rm -rf $(QUTEE_DIR)/include; \
 
 
@@ -47,8 +47,8 @@ $(QUTEE_DIR)/install:
 		-DCMAKE_C_STANDARD=$(C_STANDARD) \
 		-DUCLIENT_C_STANDARD=$(C_STANDARD);
 
-$(QUTEE_DIR)/libquteemsg.a: $(QUTEE_DIR)/install
-	mkdir -p $(QUTEE_DIR)/libquteemsg; cd $(QUTEE_DIR)/libquteemsg; \
+$(QUTEE_DIR)/libquteeinterface.a: $(QUTEE_DIR)/install
+	mkdir -p $(QUTEE_DIR)/libquteeinterface; cd $(QUTEE_DIR)/libquteeinterface; \
 	for file in $$(find $(QUTEE_DIR)/install/lib/ -name '*.a'); do \
 		folder=$$(echo $$file | sed -E "s/(.+)\/(.+).a/\2/"); \
 		mkdir -p $$folder; cd $$folder; $(X_AR) x $$file; \
@@ -57,7 +57,7 @@ $(QUTEE_DIR)/libquteemsg.a: $(QUTEE_DIR)/install
 		done; \
 		cd ..; rm -rf $$folder; \
 	done ; \
-	$(X_AR) rc -s libquteemsg.a *.obj; cp libquteemsg.a $(QUTEE_DIR); \
-	cd ..; rm -rf libquteemsg; \
+	$(X_AR) rc -s libquteeinterface.a *.obj; cp libquteeinterface.a $(QUTEE_DIR); \
+	cd ..; rm -rf libquteeinterface; \
 	cp -R $(QUTEE_DIR)/install/include $(QUTEE_DIR)/include;
 
