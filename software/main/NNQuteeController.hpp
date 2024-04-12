@@ -31,6 +31,9 @@ public:
     }
     size_t get_number_weights()
     {
+      
+      ESP_LOGI("NN Controller: ","n_neurons: %d, n_inputs: %d, n_layers: %d, n_outputs: %d, total weights: %d", n_neurons, n_inputs, n_layers, n_outputs, number_weigts );
+
         return number_weigts;
     }
 

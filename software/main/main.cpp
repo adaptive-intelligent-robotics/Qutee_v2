@@ -16,6 +16,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <type_utilities.h>
 
 
 #include <uros_network_interfaces.h>
@@ -39,11 +40,9 @@
 #endif
 
 // Define macros for checking return codes from RCL functions
-#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){\
-   printf("Failed status on line %d: %d. Message: %s, Aborting.\n",__LINE__,(int)temp_rc, rcl_get_error_string().str);\
-  rcutils_reset_error(); return;}}
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc);vTaskDelete(NULL);}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);}}
-#define RCUNUSED(fn) { rcl_ret_t temp_rc __attribute__((unused)); temp_rc = fn; }
+
 
 
 
@@ -72,25 +71,69 @@ static char time_label[5] = "time";
 static char action_label[7] = "action";
 static char state_label[6] = "state";
 static char weights_label[8] = "weights";
+static char res_message = '\0';
 
 
+qutee_interface__srv__Rollout_Response res_rollout;
+qutee_interface__srv__Rollout_Request req_rollout;
+
+
+/*// Initialize messages for ROS communication
+void init_messages(qutee_interface__srv__Rollout_Request* request, qutee_interface__srv__Rollout_Response* response){
+
+  static micro_ros_utilities_memory_conf_t conf_res = {0};
+  micro_ros_utilities_memory_rule_t rules_res[] = {
+    {"state.dim", 2},
+    {"state.data", 45},//NB_STEPS*NN_INPUT_SIZE},
+
+    {"state.dim", 2},
+    {"state.data", 45}//NB_STEPS*NN_INPUT_SIZE},
+  };
+  //conf_res.rules = rules_res;
+  //conf_res.n_rules = sizeof(rules_res) / sizeof(rules_res[0]);
+  
+  static micro_ros_utilities_memory_conf_t conf_req = {0};
+  micro_ros_utilities_memory_rule_t rules_req[] = {
+    {"weights.dim", 2},
+    {"weights.data", 45}
+  };
+  // conf_req.rules = rules_req;
+  // conf_req.n_rules = sizeof(rules_req) / sizeof(rules_req[0]);
+  
+  ESP_LOGI("ROS: ","start init message"); 
+  bool success_res = micro_ros_utilities_create_message_memory(ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_interface, srv, Rollout_Response),
+							       &response,
+							       conf_res);
+  ESP_LOGI("ROS: ","suc res: %d", success_res);
+  bool success_req = micro_ros_utilities_create_message_memory(ROSIDL_GET_MSG_TYPE_SUPPORT(qutee_interface, srv, Rollout_Request),
+							       &request,
+							       conf_req);
+  ESP_LOGI("ROS: ","suc req: %d", success_req);
+  ESP_LOGI("ROS: ","done init message"); 
+  return;
+  }*/
+
+
+  
 // Initialize messages for ROS communication
 void init_messages(qutee_interface__srv__Rollout_Request& request, qutee_interface__srv__Rollout_Response& response){
     size_t nb_steps = NB_STEPS;
     size_t action_size = NN_OUTPUT_SIZE;
     size_t state_size = NN_INPUT_SIZE;
+    // WARNING: we are currently limited to 32768 bytes in our response, while accounting for headers and other elements, it is safe to consider that we have 32000bytes available to store NB_STEPS*(NN_OUTPUT_SIZE+NN_INPUT_SIZE)*4 
     size_t nb_weights = robot.get_policy().get_number_weights();
+    ESP_LOGI("ROS: ","Init message: step %d, action %d, state %d, nb_weights %d", nb_steps, action_size, state_size, nb_weights);
     // The structure of the message is: Time x action/state Dim.
     response.actions.layout.dim.size = 2;
     response.actions.layout.dim.capacity = 2; 
-    if(!response.actions.layout.dim.data){ 
-        response.actions.layout.dim.data= (std_msgs__msg__MultiArrayDimension*) malloc(response.actions.layout.dim.capacity*sizeof(std_msgs__msg__MultiArrayDimension));
-    }  
+    response.actions.layout.dim.data= (std_msgs__msg__MultiArrayDimension*) malloc(response.actions.layout.dim.capacity*sizeof(std_msgs__msg__MultiArrayDimension));
+    
     response.actions.layout.dim.data[0].label.capacity = 5;
     response.actions.layout.dim.data[0].label.size = 5;
     response.actions.layout.dim.data[0].label.data = time_label;
     response.actions.layout.dim.data[0].size = nb_steps;
     response.actions.layout.dim.data[0].stride = nb_steps * action_size ;
+        
     response.actions.layout.dim.data[1].label.capacity = 7;
     response.actions.layout.dim.data[1].label.size = 7;
     response.actions.layout.dim.data[1].label.data = action_label;
@@ -98,44 +141,41 @@ void init_messages(qutee_interface__srv__Rollout_Request& request, qutee_interfa
     response.actions.layout.dim.data[1].stride = action_size ;
     response.actions.layout.data_offset = 0;
 
+    
     response.actions.data.capacity =  nb_steps * action_size;
     response.actions.data.size =  nb_steps * action_size;
-    if(!response.actions.data.data){
-        response.actions.data.data = (float*) malloc(response.actions.data.capacity*sizeof(float));
-    }
-    
+    response.actions.data.data = (float*) malloc(response.actions.data.capacity*sizeof(float));
+
     /// now we redo the same with states
     response.states.layout.dim.size = 2;
     response.states.layout.dim.capacity = 2; 
-    if(!response.states.layout.dim.data){
-        response.states.layout.dim.data= (std_msgs__msg__MultiArrayDimension*) malloc(response.states.layout.dim.capacity*sizeof(std_msgs__msg__MultiArrayDimension));
-    }
+    response.states.layout.dim.data= (std_msgs__msg__MultiArrayDimension*) malloc(response.states.layout.dim.capacity*sizeof(std_msgs__msg__MultiArrayDimension));
+
     response.states.layout.dim.data[0].label.capacity = 5;
     response.states.layout.dim.data[0].label.size = 5;
     response.states.layout.dim.data[0].label.data = time_label;
     response.states.layout.dim.data[0].size = nb_steps;
     response.states.layout.dim.data[0].stride = nb_steps * state_size ;
+    
     response.states.layout.dim.data[1].label.capacity = 6;
     response.states.layout.dim.data[1].label.size = 6;
     response.states.layout.dim.data[1].label.data = state_label;
     response.states.layout.dim.data[1].size = state_size;
     response.states.layout.dim.data[1].stride = state_size ;
     response.states.layout.data_offset = 0;
-
+    
+    
     response.states.data.capacity =  nb_steps * state_size;
     response.states.data.size =  nb_steps * state_size;
-    if(!response.states.data.data){
-        response.states.data.data = (float*) malloc(response.states.data.capacity*sizeof(float));
-    }
+    response.states.data.data = (float*) malloc(response.states.data.capacity*sizeof(float));
+
     
-
-
+        
     /// now we redo the same with Weights
     request.weights.layout.dim.size = 1;
     request.weights.layout.dim.capacity = 1; 
-    if(!request.weights.layout.dim.data){ 
-        request.weights.layout.dim.data= (std_msgs__msg__MultiArrayDimension*) malloc(request.weights.layout.dim.capacity*sizeof(std_msgs__msg__MultiArrayDimension));
-    }  
+    request.weights.layout.dim.data= (std_msgs__msg__MultiArrayDimension*) malloc(request.weights.layout.dim.capacity*sizeof(std_msgs__msg__MultiArrayDimension));
+    
     request.weights.layout.dim.data[0].label.capacity = 8;
     request.weights.layout.dim.data[0].label.size = 8;
     request.weights.layout.dim.data[0].label.data = weights_label;
@@ -145,11 +185,12 @@ void init_messages(qutee_interface__srv__Rollout_Request& request, qutee_interfa
 
     request.weights.data.capacity =  nb_weights;
     request.weights.data.size =  nb_weights;
-    if(!request.weights.data.data){
-        request.weights.data.data = (float*) malloc(request.weights.data.capacity*sizeof(float));
-    }
+    request.weights.data.data = (float*) malloc(request.weights.data.capacity*sizeof(float));
+    
+    
     return;
 }
+
 
 // Create response message for ROS communication
 void create_response(qutee_interface__srv__Rollout_Response* response)
@@ -258,11 +299,17 @@ void status_callback(const void * req, void * res){
   //qutee_interface__srv___Request * req_in = (qutee_interface__srv__Status_Request *) req;
   qutee_interface__srv__Status_Response * res_in = (qutee_interface__srv__Status_Response *) res;
 
-  printf("Service Status request received");
+  printf("Service Status request received\n");
   
   res_in->battery = robot.battery_voltage();
+  printf("Service getting nb weights\n");
   res_in->number_weights = robot.get_policy().get_number_weights();
-  //res_in->error_message // could be useful later.
+  printf("Service done\n");
+
+  // we can probably move such static init to the message init instead. 
+  res_in->error_message.data = &res_message;
+  res_in->error_message.size = 1;
+  res_in->error_message.capacity = 1; 
   
 }
 
@@ -295,31 +342,35 @@ void micro_ros_task(void * arg)
     RCCHECK(rclc_node_init_default(&node, "qutee_node", CONFIG_QUTEE_NAME, &support));
 
 
+
+    
     // create executor
     rclc_executor_t executor;
     unsigned int num_handles = 2; // we have two handles, one for each service
     RCCHECK(rclc_executor_init(&executor, &support.context, num_handles, &allocator));
-
+    
     // Create service for Status
+    ESP_LOGI("UROS","Init status service");
     rcl_service_t service_status;
-    RCCHECK(rclc_service_init_default(&service_status, &node, ROSIDL_GET_SRV_TYPE_SUPPORT(qutee_interface, srv, Status), "/status"));
+    RCCHECK(rclc_service_init_default(&service_status, &node, ROSIDL_GET_SRV_TYPE_SUPPORT(qutee_interface, srv, Status), "status"));
 
     qutee_interface__srv__Status_Response res_status;
     qutee_interface__srv__Status_Request req_status;
 
-
     RCCHECK(rclc_executor_add_service(&executor, &service_status, &req_status, &res_status, status_callback));
-
+    ESP_LOGI("UROS","DONE");
+    
     // Create service for Rollout
+    ESP_LOGI("UROS","Starting Rollout service");
     rcl_service_t service_rollout;
-    RCCHECK(rclc_service_init_default(&service_rollout, &node, ROSIDL_GET_SRV_TYPE_SUPPORT(qutee_interface, srv, Rollout), "/rollout"));
-
-    qutee_interface__srv__Rollout_Response res_rollout;
-    qutee_interface__srv__Rollout_Request req_rollout;
+    RCCHECK(rclc_service_init_default(&service_rollout, &node, ROSIDL_GET_SRV_TYPE_SUPPORT(qutee_interface, srv, Rollout), "rollout"));
+    ESP_LOGI("UROS","message");
+    ESP_LOGI("UROS","alloc");
     init_messages(req_rollout, res_rollout);
+    ESP_LOGI("UROS","exec");
     RCCHECK(rclc_executor_add_service(&executor, &service_rollout, &req_rollout, &res_rollout, rollout_callback));
-
-
+    ESP_LOGI("UROS","DONE");
+    
     /*
     // Create publisher.
     RCCHECK(rclc_publisher_init_default(
@@ -348,7 +399,7 @@ void micro_ros_task(void * arg)
     
     // Spin forever
     while(1){
-      rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+      RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10000)));
       usleep(100000);
     }
 
