@@ -84,6 +84,7 @@ private:
   void manage_imu_calibration_nvs(uint8_t* calibration_data, size_t size, bool write);
   void load_imu_calibration();
   void print_state();
+  void set_tft_brightness(size_t value);
   // ----- Attributes ---- //
   List_State_t _states;
   List_Actions_t _actions;
