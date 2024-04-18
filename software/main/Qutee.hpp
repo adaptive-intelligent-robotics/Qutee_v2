@@ -12,6 +12,13 @@
 #undef HIGH // undef macro from adruino lib
 #undef LOW // undef macro from arduino lib
 
+
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <vector>
+
+
 #include "nvs_flash.h"
 #include "nvs.h"
 #define STORAGE_NAMESPACE "storage"
@@ -64,7 +71,7 @@ public:
   void calibration();
   void go_to_neutral_pose();
   float battery_voltage();
-  
+  std::string get_name(){return this->name;}
   void checkup();
   void menu();
 private:
@@ -85,6 +92,10 @@ private:
   void load_imu_calibration();
   void print_state();
   void set_tft_brightness(size_t value);
+  std::vector<std::string>  get_name_list();
+  void select_name();
+  void name_memory(size_t * id, bool write);
+  
   // ----- Attributes ---- //
   List_State_t _states;
   List_Actions_t _actions;
@@ -124,6 +135,7 @@ private:
   DYNAMIXEL::XELInfoSyncWrite_t _info_xels_sw[DXL_ID_CNT];
   static const uint16_t _user_pkt_buf_cap = 128;
   uint8_t _user_pkt_buf[_user_pkt_buf_cap];
+  std::string name;
 };
 
 

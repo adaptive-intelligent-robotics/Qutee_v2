@@ -339,7 +339,7 @@ void micro_ros_task(void * arg)
     RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
 
     // create node
-    RCCHECK(rclc_node_init_default(&node, "qutee_node", CONFIG_QUTEE_NAME, &support));
+    RCCHECK(rclc_node_init_default(&node, "qutee_node", robot.get_name().c_str(), &support));
 
 
 

@@ -1,6 +1,5 @@
 #include "Qutee.hpp"
 #include <inttypes.h>
-
 #include "driver/ledc.h"
 
 #define LEDC_TIMER              LEDC_TIMER_0
@@ -21,6 +20,20 @@ void Qutee::init(){
   //Wire.setPins(GPIO_NUM_3,GPIO_NUM_4);
   //Wire.begin();
   init_tft();
+
+  size_t name_id;
+  this->name_memory(&name_id,false);
+  std::vector<std::string> names = get_name_list();
+  if(name_id < names.size())
+    this->name = names[name_id];
+  else
+    this->name = "No-Name";
+    
+      
+  
+
+  
+
   tft_load_screen();
   _dxl.setPort(_dxl_port);
   int32_t baud = 3000000;
@@ -106,7 +119,7 @@ void Qutee::init_imu(){
 void Qutee::init_tft(){
   // turn on backlite 
   gpio_set_direction((gpio_num_t)TFT_BACKLITE, GPIO_MODE_OUTPUT);
-  gpio_set_level((gpio_num_t)TFT_BACKLITE, 1);
+  //gpio_set_level((gpio_num_t)TFT_BACKLITE, 1);
   // Prepare and then apply the LEDC PWM timer configuration
   ledc_timer_config_t ledc_timer;
   ledc_timer.speed_mode       = LEDC_MODE;
@@ -123,7 +136,7 @@ void Qutee::init_tft(){
   ledc_channel.timer_sel      = LEDC_TIMER;
   ledc_channel.intr_type      = LEDC_INTR_DISABLE;
   ledc_channel.gpio_num       = (gpio_num_t)TFT_BACKLITE;
-  ledc_channel.duty           = 0.05*8192; // Set duty to 50%
+  ledc_channel.duty           = 0.05*8192; // Set duty to 5%
   ledc_channel.hpoint         = 0;
 
   ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
@@ -154,7 +167,7 @@ void Qutee::tft_load_screen() {
   this->_tft.setTextColor(ST77XX_GREEN);
   this->_tft.setTextSize(2);
   this->_tft.println("Hi! My name is");
-  this->_tft.println(TO_LITERAL(CONFIG_QUTEE_NAME));
+  this->_tft.println(this->name.c_str());
   this->_tft.setTextColor(ST77XX_RED);
   this->_tft.println("Loading!");
   delay(1000);
@@ -476,7 +489,7 @@ void Qutee::control_step(State_t& state_to_fill, Actions_t& actions_to_fill){
  }
 
 void Qutee::run_episode(){
-  if(!this->_bno.isFullyCalibrated()) {this->calibration();}
+  //
   this->go_to_neutral_pose();
   std::this_thread::sleep_for(std::chrono::microseconds(1000000));
   int64_t start, sleep_duration;
@@ -620,6 +633,112 @@ void Qutee::print_state(){
 
 
 
+std::vector<std::string>  Qutee::get_name_list(){
+  std::vector<std::string> names;
+  std::stringstream ss(CONFIG_QUTEE_NAME);
+  std::string name;
+  
+  while (std::getline(ss, name, ';')) {
+    names.push_back(name);
+  }
+  return names;
+}
+
+void Qutee::select_name(){
+  
+  std::vector<std::string> names = this->get_name_list();
+  char buf[3]; // 1 characters + NUL  
+  bool selected = false;
+  size_t id = 0;
+  while(!selected)
+    {
+      while(!gpio_get_level(GPIO_NUM_0) || gpio_get_level(GPIO_NUM_1) ||gpio_get_level(GPIO_NUM_2)){} // we loop as long as one button is pressed
+      
+      this->_tft.fillScreen(ST77XX_BLACK);
+      this->_tft.setTextSize(2);
+      
+      this->_tft.setCursor(0, 0);
+      this->_tft.setTextColor(ST77XX_GREEN);
+      sprintf(buf, "%c ",30); // print up arrow
+      this->_tft.print(buf);
+      this->_tft.setTextColor(ST77XX_BLUE);
+      if(id>0)
+	this->_tft.println(names[id-1].c_str());
+      else
+	this->_tft.println("");
+      
+      this->_tft.setCursor(0, 60);
+      this->_tft.setTextColor(ST77XX_GREEN);
+      sprintf(buf, "%c ",4);// print diamond
+      this->_tft.print(buf);
+      this->_tft.setTextColor(ST77XX_BLUE);
+      this->_tft.println(names[id].c_str());
+      
+      this->_tft.setCursor(0, 120);
+      this->_tft.setTextColor(ST77XX_GREEN);
+      sprintf(buf, "%c ",31); // print down arrow
+      this->_tft.print(buf);
+      this->_tft.setTextColor(ST77XX_BLUE);
+      if(id+1<names.size()-1)
+	this->_tft.println(names[id+1].c_str());
+      else
+	this->_tft.println("");
+      
+      ESP_LOGI("Menu", "Entering name_select menu. Waiting for a button to be pressed");
+      
+      delay(100);
+      if(!gpio_get_level(GPIO_NUM_0))
+	{
+	  if(id!=0)
+	    id--;
+	}
+      if(gpio_get_level(GPIO_NUM_1))
+	selected = true;
+      if(gpio_get_level(GPIO_NUM_2))
+	  {
+	    id++;
+	    if(id>names.size()-1)
+	      id = names.size()-1;
+	  }
+    }
+  this->name = names[id];
+  this->name_memory(&id,true);
+  while(!gpio_get_level(GPIO_NUM_0) || gpio_get_level(GPIO_NUM_1) ||gpio_get_level(GPIO_NUM_2)){} // we loop as long as one button is pressed
+  delay(100);
+  return;
+}
+	      
+void Qutee::name_memory(size_t * id, bool write = false){
+  this->init_NVS();  
+  ESP_LOGI("NVS STORAGE: ","Opening Non-Volatile Storage (NVS) handle... ");
+  nvs_handle_t nvs_handle;
+  esp_err_t err;
+  err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &nvs_handle);
+  
+  if (err != ESP_OK) {
+    ESP_LOGE("NVS STORAGE: ","Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+  } else {
+      ESP_LOGI("NVS STORAGE: ","Done\n");
+      size_t  required_size = 1 * sizeof(size_t);
+      ESP_LOGI("NVS STORAGE: ","handling %d bits.", required_size);
+      if(write){// WRITE
+	// Write value
+	err = nvs_set_blob(nvs_handle, "name_id", id, required_size);
+	if (err != ESP_OK) {ESP_LOGE("NVS STORAGE: ","Write Failed, error: %s",  esp_err_to_name(err)); } else{ESP_LOGI("NVS STORAGE: ","Write Done");}
+	// Commit
+	err = nvs_commit(nvs_handle);
+	if (err != ESP_OK) {ESP_LOGE("NVS STORAGE: ","Commit Failed, error: %s", esp_err_to_name(err)); } else{ESP_LOGI("NVS STORAGE: ","Commit Done"); }
+      }
+      else{ // READ
+	err = nvs_get_blob(nvs_handle, "name_id", id, &required_size);
+	if (err != ESP_OK) {ESP_LOGE("NVS STORAGE: ","Read Failed, error: %s", esp_err_to_name(err)); } else{ESP_LOGI("NVS STORAGE: ","Read Done, read %d bits.", required_size); }
+      }
+      // Close
+      nvs_close(nvs_handle);
+  }  
+
+
+}
 
 void Qutee::menu(){
   bool screen_on = false;
@@ -627,6 +746,8 @@ void Qutee::menu(){
   gpio_set_direction(GPIO_NUM_1, GPIO_MODE_INPUT);
   gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT);
 
+  while(!gpio_get_level(GPIO_NUM_0) || gpio_get_level(GPIO_NUM_1) ||gpio_get_level(GPIO_NUM_2)){} // we loop as long as one button is pressed
+  
   while(1){
     if(!screen_on){
       screen_on=true;
@@ -636,7 +757,7 @@ void Qutee::menu(){
       
       this->_tft.setCursor(0, 0);
       this->_tft.setTextColor(ST77XX_GREEN);
-      this->_tft.println("Start Calibration");
+      this->_tft.println("Select Name");
       
       this->_tft.setCursor(0, 60);
       this->_tft.setTextColor(ST77XX_RED);
@@ -653,12 +774,15 @@ void Qutee::menu(){
     delay(100);
     if(!gpio_get_level(GPIO_NUM_0))
       {
-	this->calibration();
+	this->select_name();
 	screen_on=false; // set to false, to replot the screen when leaving calibration
+	
       }
-    if(gpio_get_level(GPIO_NUM_1))
+    if(gpio_get_level(GPIO_NUM_1)){
       this->checkup(); // start checkup infinite loop
+    }
     if(gpio_get_level(GPIO_NUM_2)){
+      if(!this->_bno.isFullyCalibrated()) {this->calibration();}
       this->_tft.fillScreen(ST77XX_BLACK); // clear menu before returning to the main function, where we launch ros and co.
       this->set_tft_brightness(0); // disable backlight.
       return;
