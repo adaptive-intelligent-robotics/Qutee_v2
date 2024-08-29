@@ -1,0 +1,134 @@
+<mujoco model="qutee">
+    <compiler angle="radian" coordinate="local"/>
+<!--    <option integrator="RK4" timestep="0.01"/>-->
+    <visual>
+        <global offwidth="800" offheight="600"/>
+        <quality shadowsize="2048"/>
+        <headlight ambient="0.4 0.4 0.4" diffuse="0.8 0.8 0.8" specular="0.1 0.1 0.1"/>
+    </visual>
+
+<!--   <option impratio="100"/>-->
+
+    <default>
+        <position kv="10" kp="50"/>
+        <joint damping="2" armature="0.01" frictionloss="0."/>
+      <default class="shoulder">
+      </default>
+      <default class="elbow">
+      </default>
+      <default class="wrist">
+      </default>
+    </default>
+
+    <!-- MATERIALS -->
+    <asset>
+        <texture name="texplane" type="2d" builtin="checker" width="512" height="512" rgb1="0.1 0.2 0.3" rgb2="0.2 0.3 0.4"/>
+        <texture name="texgeom" type="cube" builtin="flat" mark="cross" width="127" height="127" rgb1="0.8 0.8 0.8" rgb2="0.0 0.0 0.0" markrgb="1.0 0.0 0.0"/>
+        <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true"/>
+        <material name="Blue" rgba="0 0 1 1"/>
+        <material name="Red" rgba="1 0 0 1"/>
+        <material name="Green" rgba="0 1 0 1"/>
+        <material name="Yellow" rgba="1 1 0 1"/>
+        <material name="LightGrey" rgba="0.6 0.6 0.6 1.0"/>
+    </asset>
+    <!-- END OF MATERIALS -->
+
+    <worldbody>
+        <!-- GROUND -->
+        <geom name="ground" type="plane" size="0 0 0.1" material="matplane" condim="3"/>
+
+        <!-- TORSO -->
+        <body name="base_link" pos="0 0 0.3" quat="0.9239 0 0 0.3827">
+<!--            <geom type="capsule" fromto="-0.03 -0.03 0 0.03 0.03 0" size="0.021" material="Blue"/>-->
+            <geom type="box" pos="0 0 0" size="0.025 0.025 0.02" material="LightGrey"/>
+            <joint name="root" type="free" damping="0.01"/>
+
+            <!-- LEG 0 -->
+            <body name="leg_0_1" pos="0.045 0 0">
+                <joint class="shoulder" type="hinge" axis="0 0 1" range="-1.5708 1.5708" damping="0.0" name="leg_0_shoulder" />
+                <geom type="capsule" fromto="0 0 0 0.056 0 0" size="0.013" material="Red"/>
+                <body name="leg_0_2" pos="0.056 0 0">
+                    <joint class="elbow" type="hinge" axis="0 1 0" range="-0.7854 0.7854" damping="0.0"  name="leg_0_elbow" />
+                    <geom type="capsule" fromto="0 0 0 0.081 0 0" size="0.013" material="Blue"/>
+                    <body name="leg_0_3" pos="0.081 0 0.">
+                        <joint class="wrist" type="hinge" axis="0 -1 0" range="-0.7854 0.7854" damping="0.0" name="leg_0_wrist" />
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.09" size="0.013" material="Red"/>
+<!--                        <body name="foot_0" pos="0 0 -0.11095">-->
+<!--                            <geom type="sphere" size="0.025" material="Green"/>-->
+<!--                        </body>-->
+                    </body>
+                </body>
+            </body>
+
+            <!-- LEG 2 -->
+            <body name="leg_2_1" pos="0 -0.045 0" quat="0.7071 0 0 -0.7071">
+                <joint class="shoulder" type="hinge" axis="0 0 1" range="-1.5708 1.5708" damping="0.0"  name="leg_2_shoulder"/>
+                <geom type="capsule" fromto="0 0 0 0.056 0 0" size="0.013" material="Red"/>
+                <body name="leg_2_2" pos="0.056 0 0">
+                    <joint class="elbow" type="hinge" axis="0 1 0" range="-0.7854 0.7854" damping="0.0" name="leg_2_elbow" />
+                    <geom type="capsule" fromto="0 0 0 0.081 0 0" size="0.013" material="Blue"/>
+                    <body name="leg_2_3" pos="0.081 0 0.">
+                        <joint class="wrist" type="hinge" axis="0 -1 0" range="-0.7854 0.7854" damping="0.0" name="leg_2_wrist"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.09" size="0.013" material="Red"/>
+<!--                        <body name="foot_2" pos="0 0 -0.11095">-->
+<!--                            <geom type="sphere" size="0.025" material="Green"/>-->
+<!--                        </body>-->
+                    </body>
+                </body>
+            </body>
+
+            <!-- LEG 3 -->
+            <body name="leg_3_1" pos="-0.045 0 0" quat="0 0 0 1">
+                <joint class="shoulder" type="hinge" axis="0 0 1" range="-1.5708 1.5708" damping="0.0"  name="leg_3_shoulder"/>
+                <geom type="capsule" fromto="0 0 0 0.056 0 0" size="0.013" material="Red"/>
+                <body name="leg_3_2" pos="0.056 0 0">
+                    <joint class="elbow" type="hinge" axis="0 1 0" range="-0.7854 0.7854" damping="0.0" name="leg_3_elbow"/>
+                    <geom type="capsule" fromto="0 0 0 0.081 0 0" size="0.013" material="Blue"/>
+                    <body name="leg_3_3" pos="0.081 0 0.">
+                        <joint class="wrist" type="hinge" axis="0 -1 0" range="-0.7854 0.7854" damping="0.0" name="leg_3_wrist"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.09" size="0.013" material="Red"/>
+<!--                        <body name="foot_3" pos="0 0 -0.11095">-->
+<!--                            <geom type="sphere" size="0.025" material="Green"/>-->
+<!--                        </body>-->
+                    </body>
+                </body>
+            </body>
+
+            <!-- LEG 5 -->
+            <body name="leg_5_1" pos="0 0.045 0" quat="0.7071 0 0 0.7071">
+                <joint class="shoulder" type="hinge" axis="0 0 1" range="-1.5708 1.5708" damping="0.0"  name="leg_5_shoulder"/>
+                <geom type="capsule" fromto="0 0 0 0.056 0 0" size="0.013" material="Red"/>
+                <body name="leg_5_2" pos="0.056 0 0">
+                    <joint class="elbow" type="hinge" axis="0 1 0" range="-0.7854 0.7854" damping="0.0"  name="leg_5_elbow" />
+                    <geom type="capsule" fromto="0 0 0 0.081 0 0" size="0.013" material="Blue"/>
+                    <body name="leg_5_3" pos="0.081 0 0.">
+                        <joint class="wrist" type="hinge" axis="0 -1 0" range="-0.7854 0.7854" damping="0.0" name="leg_5_wrist"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.09" size="0.013" material="Red"/>
+<!--                        <body name="foot_5" pos="0 0 -0.11095">-->
+<!--                            <geom type="sphere" size="0.025" material="Green"/>-->
+<!--                        </body>-->
+                    </body>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+
+  <actuator>
+    <position class="shoulder" name="leg_0_shoulder_pos" joint="leg_0_shoulder" ctrllimited="true" ctrlrange="-1.5708 1.5708"/>
+    <position class="elbow" name="leg_0_elbow_pos" joint="leg_0_elbow" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+    <position class="wrist" name="leg_0_wrist_pos" joint="leg_0_wrist" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+
+    <position class="shoulder" name="leg_2_shoulder_pos" joint="leg_2_shoulder" ctrllimited="true" ctrlrange="-1.5708 1.5708"/>
+    <position class="elbow" name="leg_2_elbow_pos" joint="leg_2_elbow" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+    <position class="wrist" name="leg_2_wrist_pos" joint="leg_2_wrist" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+
+    <position class="shoulder" name="leg_3_shoulder_pos" joint="leg_3_shoulder" ctrllimited="true" ctrlrange="-1.5708 1.5708"/>
+    <position class="elbow" name="leg_3_elbow_pos" joint="leg_3_elbow" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+    <position class="wrist" name="leg_3_wrist_pos" joint="leg_3_wrist" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+
+    <position class="shoulder" name="leg_5_shoulder_pos" joint="leg_5_shoulder" ctrllimited="true" ctrlrange="-1.5708 1.5708"/>
+    <position class="elbow" name="leg_5_elbow_pos" joint="leg_5_elbow" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+    <position class="wrist" name="leg_5_wrist_pos" joint="leg_5_wrist" ctrllimited="true" ctrlrange="-0.7854 0.7854"/>
+
+  </actuator>
+</mujoco>
